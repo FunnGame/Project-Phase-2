@@ -1,0 +1,4 @@
+../Core/Src/nrf24_hal.c:15:6:NRF24_WriteReg	1
+../Core/Src/nrf24_hal.c:22:6:NRF24_Init	1
+../Core/Src/nrf24_hal.c:39:9:NRF24_Available	1
+../Core/Src/nrf24_hal.c:46:6:NRF24_Receive	2

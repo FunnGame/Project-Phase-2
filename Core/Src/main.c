@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "nrf24_hal.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -42,7 +42,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+RF_ControlPacket_t rx_cmd;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -85,13 +85,17 @@ int main(void)
 
   /* Initialize all configured peripherals */
   /* USER CODE BEGIN 2 */
-
+  NRF24_Init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    if (NRF24_Available()) {
+        NRF24_Receive(&rx_cmd);
+        // Dữ liệu tốc độ/hướng rẽ đã sẵn sàng trong rx_cmd!
+    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

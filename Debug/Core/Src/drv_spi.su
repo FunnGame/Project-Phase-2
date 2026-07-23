@@ -1,0 +1,4 @@
+../Core/Src/drv_spi.c:10:6:SPI2_Init	8	static
+../Core/Src/drv_spi.c:32:9:SPI2_TransmitReceive	16	static
+../Core/Src/drv_spi.c:39:6:SPI2_CSN_Select	4	static
+../Core/Src/drv_spi.c:43:6:SPI2_CSN_Deselect	4	static
