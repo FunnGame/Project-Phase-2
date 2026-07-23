@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "nrf24_hal.h"
+#include "control_app.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -92,9 +93,24 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    if (NRF24_Available()) {
-        NRF24_Receive(&rx_cmd);
-        // Dữ liệu tốc độ/hướng rẽ đã sẵn sàng trong rx_cmd!
+	  if (NRF24_Available()) {
+	          NRF24_Receive(&rx_cmd);
+
+	          // 1. Xác định hướng rẽ chuẩn theo enum của Thành
+	          Car_Direction_t dir = CAR_FORWARD;
+	          if (rx_cmd.steering > 20) {
+	              dir = CAR_TURN_RIGHT;
+	          } else if (rx_cmd.steering < -20) {
+	              dir = CAR_TURN_LEFT;
+	          } else if (rx_cmd.throttle == 0) {
+	              dir = CAR_STOP;
+	          }
+
+	          // 2. Chuyển tay ga thành % tốc độ (0 - 100)
+	          uint8_t speed = (rx_cmd.throttle > 0) ? (uint8_t)rx_cmd.throttle : 0;
+
+	          // 3. Gọi hàm của Thành[cite: 1]
+	          ControlApp_Set(dir, speed);
     }
     /* USER CODE END WHILE */
 
