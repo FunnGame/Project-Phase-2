@@ -1,18 +1,10 @@
-#include "stm32f10x.h"
-#include "actuator_hal.h"
+#include "control_app.h"
 
 int main(void) {
-    SystemInit(); 
-
-    
-    Actuator_Car_Init();
-
-    
-    Actuator_Car_Control(CAR_TURN_RIGHT, 5);
-
-    
-
+    ControlApp_Init();
     while (1) {
-        
+        ControlApp_Update();
     }
+
+    return 0;
 }
