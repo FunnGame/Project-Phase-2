@@ -1,0 +1,179 @@
+<Window x:Class="Station.ControlApp.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Station Control — Xbox Controller" Height="560" Width="900"
+        Background="{StaticResource BgBrush}" WindowStartupLocation="CenterScreen">
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header / connection status -->
+        <Border Grid.Row="0" Background="{StaticResource PanelBrush}" CornerRadius="8"
+                Padding="14,10" Margin="0,0,0,14">
+            <StackPanel Orientation="Horizontal">
+                <Ellipse Width="12" Height="12" VerticalAlignment="Center"
+                         Fill="{Binding IsConnected, Converter={StaticResource BoolBrush}}"/>
+                <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource TextBrush}"
+                           FontSize="15" FontWeight="SemiBold" Margin="10,0,0,0"
+                           VerticalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Main body: sticks | triggers | buttons -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Thumbsticks -->
+            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                <TextBlock Text="THUMBSTICKS" Style="{StaticResource SectionTitle}"/>
+
+                <Border Background="{StaticResource PanelBrush}" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                    <StackPanel>
+                        <TextBlock Text="Left stick" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,6"/>
+                        <Border Width="140" Height="140" CornerRadius="70"
+                                Background="{StaticResource BgBrush}" BorderBrush="{StaticResource OutlineBrush}" BorderThickness="1">
+                            <Canvas Width="140" Height="140">
+                                <Line X1="70" Y1="0" X2="70" Y2="140" Stroke="{StaticResource OutlineBrush}" StrokeThickness="1"/>
+                                <Line X1="0" Y1="70" X2="140" Y2="70" Stroke="{StaticResource OutlineBrush}" StrokeThickness="1"/>
+                                <Ellipse Width="20" Height="20" Fill="{StaticResource AccentBrush}"
+                                         Canvas.Left="{Binding LeftDotX}" Canvas.Top="{Binding LeftDotY}"/>
+                            </Canvas>
+                        </Border>
+                        <TextBlock Text="{Binding LeftStickText}" Style="{StaticResource Mono}" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Background="{StaticResource PanelBrush}" CornerRadius="8" Padding="12">
+                    <StackPanel>
+                        <TextBlock Text="Right stick" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,6"/>
+                        <Border Width="140" Height="140" CornerRadius="70"
+                                Background="{StaticResource BgBrush}" BorderBrush="{StaticResource OutlineBrush}" BorderThickness="1">
+                            <Canvas Width="140" Height="140">
+                                <Line X1="70" Y1="0" X2="70" Y2="140" Stroke="{StaticResource OutlineBrush}" StrokeThickness="1"/>
+                                <Line X1="0" Y1="70" X2="140" Y2="70" Stroke="{StaticResource OutlineBrush}" StrokeThickness="1"/>
+                                <Ellipse Width="20" Height="20" Fill="{StaticResource AccentBrush}"
+                                         Canvas.Left="{Binding RightDotX}" Canvas.Top="{Binding RightDotY}"/>
+                            </Canvas>
+                        </Border>
+                        <TextBlock Text="{Binding RightStickText}" Style="{StaticResource Mono}" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- Triggers -->
+            <StackPanel Grid.Column="1" Margin="0,0,16,0">
+                <TextBlock Text="TRIGGERS" Style="{StaticResource SectionTitle}"/>
+                <Border Background="{StaticResource PanelBrush}" CornerRadius="8" Padding="12" Height="316">
+                    <StackPanel Orientation="Horizontal">
+                        <!-- LT -->
+                        <StackPanel Margin="4,0" VerticalAlignment="Bottom">
+                            <Border Width="42" Height="120" Background="{StaticResource BgBrush}"
+                                    BorderBrush="{StaticResource OutlineBrush}" BorderThickness="1" CornerRadius="6">
+                                <Rectangle Width="40" Height="{Binding LeftTriggerFill}" Fill="{StaticResource AccentBrush}"
+                                           VerticalAlignment="Bottom" RadiusX="5" RadiusY="5"/>
+                            </Border>
+                            <TextBlock Text="{Binding LeftTriggerText}" Style="{StaticResource Mono}"
+                                       HorizontalAlignment="Center" Margin="0,6,0,0"/>
+                            <TextBlock Text="LT" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                        <!-- RT -->
+                        <StackPanel Margin="4,0" VerticalAlignment="Bottom">
+                            <Border Width="42" Height="120" Background="{StaticResource BgBrush}"
+                                    BorderBrush="{StaticResource OutlineBrush}" BorderThickness="1" CornerRadius="6">
+                                <Rectangle Width="40" Height="{Binding RightTriggerFill}" Fill="{StaticResource AccentBrush}"
+                                           VerticalAlignment="Bottom" RadiusX="5" RadiusY="5"/>
+                            </Border>
+                            <TextBlock Text="{Binding RightTriggerText}" Style="{StaticResource Mono}"
+                                       HorizontalAlignment="Center" Margin="0,6,0,0"/>
+                            <TextBlock Text="RT" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- Buttons + D-pad -->
+            <StackPanel Grid.Column="2">
+                <TextBlock Text="BUTTONS" Style="{StaticResource SectionTitle}"/>
+                <Border Background="{StaticResource PanelBrush}" CornerRadius="8" Padding="12">
+                    <StackPanel>
+                        <!-- Face + shoulders + specials -->
+                        <WrapPanel>
+                            <Border Style="{StaticResource Indicator}" Background="{Binding A, Converter={StaticResource BoolBrush}}">
+                                <TextBlock Text="A" Style="{StaticResource IndicatorText}"/></Border>
+                            <Border Style="{StaticResource Indicator}" Background="{Binding B, Converter={StaticResource BoolBrush}}">
+                                <TextBlock Text="B" Style="{StaticResource IndicatorText}"/></Border>
+                            <Border Style="{StaticResource Indicator}" Background="{Binding X, Converter={StaticResource BoolBrush}}">
+                                <TextBlock Text="X" Style="{StaticResource IndicatorText}"/></Border>
+                            <Border Style="{StaticResource Indicator}" Background="{Binding Y, Converter={StaticResource BoolBrush}}">
+                                <TextBlock Text="Y" Style="{StaticResource IndicatorText}"/></Border>
+                            <Border Style="{StaticResource Indicator}" Background="{Binding LeftBumper, Converter={StaticResource BoolBrush}}">
+                                <TextBlock Text="LB" Style="{StaticResource IndicatorText}"/></Border>
+                            <Border Style="{StaticResource Indicator}" Background="{Binding RightBumper, Converter={StaticResource BoolBrush}}">
+                                <TextBlock Text="RB" Style="{StaticResource IndicatorText}"/></Border>
+                        </WrapPanel>
+                        <WrapPanel Margin="0,4,0,0">
+                            <Border Style="{StaticResource Indicator}" Background="{Binding Back, Converter={StaticResource BoolBrush}}">
+                                <TextBlock Text="Back" Style="{StaticResource IndicatorText}"/></Border>
+                            <Border Style="{StaticResource Indicator}" Background="{Binding Start_, Converter={StaticResource BoolBrush}}">
+                                <TextBlock Text="Start" Style="{StaticResource IndicatorText}"/></Border>
+                            <Border Style="{StaticResource Indicator}" Background="{Binding LeftThumb, Converter={StaticResource BoolBrush}}">
+                                <TextBlock Text="L3" Style="{StaticResource IndicatorText}"/></Border>
+                            <Border Style="{StaticResource Indicator}" Background="{Binding RightThumb, Converter={StaticResource BoolBrush}}">
+                                <TextBlock Text="R3" Style="{StaticResource IndicatorText}"/></Border>
+                        </WrapPanel>
+
+                        <!-- D-pad -->
+                        <TextBlock Text="D-PAD" Style="{StaticResource SectionTitle}" Margin="2,14,0,6"/>
+                        <Grid Width="150" HorizontalAlignment="Left">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Row="0" Grid.Column="1" Style="{StaticResource Indicator}" Background="{Binding DPadUp, Converter={StaticResource BoolBrush}}">
+                                <TextBlock Text="▲" Style="{StaticResource IndicatorText}"/></Border>
+                            <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource Indicator}" Background="{Binding DPadLeft, Converter={StaticResource BoolBrush}}">
+                                <TextBlock Text="◄" Style="{StaticResource IndicatorText}"/></Border>
+                            <Border Grid.Row="1" Grid.Column="2" Style="{StaticResource Indicator}" Background="{Binding DPadRight, Converter={StaticResource BoolBrush}}">
+                                <TextBlock Text="►" Style="{StaticResource IndicatorText}"/></Border>
+                            <Border Grid.Row="2" Grid.Column="1" Style="{StaticResource Indicator}" Background="{Binding DPadDown, Converter={StaticResource BoolBrush}}">
+                                <TextBlock Text="▼" Style="{StaticResource IndicatorText}"/></Border>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
+
+        <!-- Footer: derived car-control intent (preview of the radio payload) -->
+        <Border Grid.Row="2" Background="{StaticResource PanelBrush}" CornerRadius="8" Padding="14,10" Margin="0,14,0,0">
+            <StackPanel Orientation="Horizontal">
+                <Border CornerRadius="6" Padding="12,4" VerticalAlignment="Center" Margin="0,0,16,0"
+                        Background="{Binding Armed, Converter={StaticResource BoolBrushArmed}}">
+                    <TextBlock Text="{Binding ArmStatusText}" Foreground="{StaticResource TextBrush}" FontWeight="Bold"/>
+                </Border>
+                <TextBlock Text="CAR CONTROL" Style="{StaticResource SectionTitle}" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                <TextBlock Style="{StaticResource Mono}" VerticalAlignment="Center" Margin="0,0,20,0">
+                    <Run Text="Steering (LS-X): " Foreground="#8A8D96"/><Run Text="{Binding SteeringText, Mode=OneWay}"/></TextBlock>
+                <TextBlock Style="{StaticResource Mono}" VerticalAlignment="Center" Margin="0,0,20,0">
+                    <Run Text="Throttle (RT): " Foreground="#8A8D96"/><Run Text="{Binding ThrottleText, Mode=OneWay}"/></TextBlock>
+                <TextBlock Style="{StaticResource Mono}" VerticalAlignment="Center" Margin="0,0,20,0">
+                    <Run Text="Brake (LT): " Foreground="#8A8D96"/><Run Text="{Binding BrakeText, Mode=OneWay}"/></TextBlock>
+                <Border CornerRadius="6" Padding="10,4" VerticalAlignment="Center" Margin="0,0,20,0"
+                        Background="{Binding Reverse, Converter={StaticResource BoolBrush}}">
+                    <TextBlock Text="REVERSE (LB)" Foreground="{StaticResource TextBrush}" FontWeight="Bold"/>
+                </Border>
+                <TextBlock Style="{StaticResource Mono}" VerticalAlignment="Center">
+                    <Run Text="Frame: " Foreground="#8A8D96"/><Run Text="{Binding FrameHexText, Mode=OneWay}"/></TextBlock>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>
