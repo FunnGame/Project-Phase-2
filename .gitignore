@@ -1,10 +1,14 @@
+# Chặn các folder build tự sinh
 /Debug/
-/.settings/
 /Release/
+/.settings/
+
+# Chặn file config debug cá nhân
 *.launch
 *.o
 *.d
 *.su
+*.cyclo
 *.elf
 *.hex
 *.bin
