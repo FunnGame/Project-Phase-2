@@ -2,6 +2,8 @@
 /Debug/
 /Release/
 /.settings/
+/Drivers/
+/Startup/
 
 # Chặn file config debug cá nhân
 *.launch
