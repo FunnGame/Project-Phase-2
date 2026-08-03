@@ -5,6 +5,10 @@
 /Drivers/
 /Startup/
 
+# Chặn file cấu hình dự án của STM32CubeIDE / Eclipse
+.cproject
+.project
+
 # Chặn file config debug cá nhân
 *.launch
 *.o
@@ -16,3 +20,8 @@
 *.bin
 *.map
 *.list
+
+# Chặn file rác hệ điều hành
+.DS_Store
+Thumbs.db
+desktop.ini
