@@ -3,11 +3,23 @@
 /Release/
 /.settings/
 /Drivers/
-/Startup/
 
-# Chặn file cấu hình dự án của STM32CubeIDE / Eclipse
+# Chặn file cấu hình dự án của STM32CubeIDE / Eclipse / CubeMX
 .cproject
 .project
+.mxproject
+*.ioc
+*.ld
+
+# Chặn mã nguồn tự sinh chuẩn của ST/ARM (chỉ giữ file code do bạn viết)
+Core/Src/syscalls.c
+Core/Src/sysmem.c
+Core/Src/system_stm32f1xx.c
+Core/Src/stm32f1xx_hal_msp.c
+Core/Src/stm32f1xx_it.c
+Core/Inc/stm32f1xx_it.h
+Core/Inc/stm32f1xx_hal_conf.h
+Startup/
 
 # Chặn file config debug cá nhân
 *.launch
