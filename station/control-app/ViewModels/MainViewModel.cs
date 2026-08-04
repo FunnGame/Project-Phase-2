@@ -1,6 +1,8 @@
+using System.Collections.ObjectModel;
 using System.Windows.Threading;
 using Station.ControlApp.Input;
 using Station.ControlApp.Mapping;
+using Station.ControlApp.Transport;
 
 namespace Station.ControlApp.ViewModels;
 
@@ -31,13 +33,65 @@ public sealed class MainViewModel : ObservableObject
     {
         _timer = new DispatcherTimer(DispatcherPriority.Render) { Interval = PollInterval };
         _timer.Tick += (_, _) => Update();
+
+        ConnectCommand = new RelayCommand(ToggleConnection);
+        RefreshPortsCommand = new RelayCommand(RefreshPorts);
+        RefreshPorts();
     }
 
     /// <summary>Begin polling. Call once the window is loaded.</summary>
     public void Start() => _timer.Start();
 
-    /// <summary>Stop polling. Call on window close.</summary>
-    public void Stop() => _timer.Stop();
+    /// <summary>Stop polling and close the serial link. Call on window close.</summary>
+    public void Stop()
+    {
+        _timer.Stop();
+        _link.Dispose();
+    }
+
+    /* ----- Serial transport ------------------------------------------------ */
+
+    private readonly SerialLink _link = new();
+
+    /// <summary>COM ports currently present on the machine.</summary>
+    public ObservableCollection<string> AvailablePorts { get; } = new();
+
+    public RelayCommand ConnectCommand { get; }
+    public RelayCommand RefreshPortsCommand { get; }
+
+    /// <summary>Re-scan for COM ports, keeping the current selection if it survives.</summary>
+    private void RefreshPorts()
+    {
+        string? previous = SelectedPort;
+        AvailablePorts.Clear();
+        foreach (string p in SerialLink.GetPortNames())
+        {
+            AvailablePorts.Add(p);
+        }
+        SelectedPort = (previous is not null && AvailablePorts.Contains(previous))
+            ? previous
+            : AvailablePorts.FirstOrDefault();
+    }
+
+    private void ToggleConnection()
+    {
+        if (_link.IsOpen)
+        {
+            _link.Close();
+            LinkStatusText = "Disconnected";
+        }
+        else if (SelectedPort is not null && _link.Open(SelectedPort))
+        {
+            LinkStatusText = $"Sending on {SelectedPort} @ {SerialLink.DefaultBaud} 8N1";
+        }
+        else
+        {
+            LinkStatusText = _link.LastError ?? "No COM port selected";
+        }
+
+        IsLinkOpen = _link.IsOpen;
+        ConnectButtonText = _link.IsOpen ? "Disconnect" : "Connect";
+    }
 
     private void Update()
     {
@@ -107,6 +161,24 @@ public sealed class MainViewModel : ObservableObject
 
         byte[] frame = _frame.Build(c);
         FrameHexText = Convert.ToHexString(frame);
+
+        /* Stream every tick (~60 Hz), even when nothing changed: the car's
+         * failsafe treats silence as a lost link, so a steady rate is what
+         * keeps it alive. */
+        if (_link.IsOpen)
+        {
+            if (_link.Write(frame))
+            {
+                FramesSentText = _link.FramesSent.ToString();
+            }
+            else
+            {
+                /* Write() closes the port on failure — surface it and stop. */
+                IsLinkOpen = false;
+                ConnectButtonText = "Connect";
+                LinkStatusText = _link.LastError ?? "Serial write failed";
+            }
+        }
     }
 
     private void UpdateArmState(in GamepadState s)
@@ -193,4 +265,19 @@ public sealed class MainViewModel : ObservableObject
 
     private string _frameHexText = "";
     public string FrameHexText { get => _frameHexText; private set => SetProperty(ref _frameHexText, value); }
+
+    private string? _selectedPort;
+    public string? SelectedPort { get => _selectedPort; set => SetProperty(ref _selectedPort, value); }
+
+    private bool _isLinkOpen;
+    public bool IsLinkOpen { get => _isLinkOpen; private set => SetProperty(ref _isLinkOpen, value); }
+
+    private string _connectButtonText = "Connect";
+    public string ConnectButtonText { get => _connectButtonText; private set => SetProperty(ref _connectButtonText, value); }
+
+    private string _linkStatusText = "Not connected";
+    public string LinkStatusText { get => _linkStatusText; private set => SetProperty(ref _linkStatusText, value); }
+
+    private string _framesSentText = "0";
+    public string FramesSentText { get => _framesSentText; private set => SetProperty(ref _framesSentText, value); }
 }

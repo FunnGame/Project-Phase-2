@@ -11,16 +11,39 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Header / connection status -->
+        <!-- Header: controller status (left) + serial link to the station (right) -->
         <Border Grid.Row="0" Background="{StaticResource PanelBrush}" CornerRadius="8"
                 Padding="14,10" Margin="0,0,0,14">
-            <StackPanel Orientation="Horizontal">
-                <Ellipse Width="12" Height="12" VerticalAlignment="Center"
-                         Fill="{Binding IsConnected, Converter={StaticResource BoolBrush}}"/>
-                <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource TextBrush}"
-                           FontSize="15" FontWeight="SemiBold" Margin="10,0,0,0"
-                           VerticalAlignment="Center"/>
-            </StackPanel>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse Width="12" Height="12" VerticalAlignment="Center"
+                             Fill="{Binding IsConnected, Converter={StaticResource BoolBrush}}"/>
+                    <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource TextBrush}"
+                               FontSize="15" FontWeight="SemiBold" Margin="10,0,0,0"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse Width="12" Height="12" VerticalAlignment="Center" Margin="0,0,8,0"
+                             Fill="{Binding IsLinkOpen, Converter={StaticResource BoolBrushArmed}}"/>
+                    <TextBlock Text="{Binding LinkStatusText}" Foreground="{StaticResource MutedBrush}"
+                               VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <TextBlock Style="{StaticResource Mono}" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <Run Text="TX " Foreground="#8A8D96"/><Run Text="{Binding FramesSentText, Mode=OneWay}"/></TextBlock>
+                    <ComboBox ItemsSource="{Binding AvailablePorts}"
+                              SelectedItem="{Binding SelectedPort}"
+                              MinWidth="90" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                    <Button Content="⟳" Command="{Binding RefreshPortsCommand}"
+                            Padding="8,3" Margin="0,0,6,0" ToolTip="Rescan COM ports"/>
+                    <Button Content="{Binding ConnectButtonText}" Command="{Binding ConnectCommand}"
+                            Padding="12,3" FontWeight="SemiBold"/>
+                </StackPanel>
+            </Grid>
         </Border>
 
         <!-- Main body: sticks | triggers | buttons -->
