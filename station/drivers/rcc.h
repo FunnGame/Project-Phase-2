@@ -72,13 +72,20 @@ typedef enum {
     RCC_SYSCLK_SRC_HSE,      /**< External oscillator/clock (see hse_hz).  */
 } rcc_sysclk_src_t;
 
-/** @brief APB bus prescaler options (HCLK -> PCLKx). */
+/**
+ * @brief APB bus prescaler options (HCLK -> PCLKx).
+ *
+ * These are the raw RCC_CFGR PPREx field encodings, NOT a 0,1,2,3 sequence:
+ * the hardware treats 0xx as divide-by-1 and only 1xx selects a real divider.
+ * Using sequential values silently leaves the bus undivided — which puts APB1
+ * 4x over its 45 MHz limit at a 180 MHz SYSCLK.
+ */
 typedef enum {
-    RCC_APB_DIV1 = 0,
-    RCC_APB_DIV2,
-    RCC_APB_DIV4,
-    RCC_APB_DIV8,
-    RCC_APB_DIV16,
+    RCC_APB_DIV1  = 0x0,   /* 0xx */
+    RCC_APB_DIV2  = 0x4,   /* 100 */
+    RCC_APB_DIV4  = 0x5,   /* 101 */
+    RCC_APB_DIV8  = 0x6,   /* 110 */
+    RCC_APB_DIV16 = 0x7,   /* 111 */
 } rcc_apb_div_t;
 
 /**
