@@ -4,7 +4,7 @@
  * Author: trong
  */
 
-##ifndef DRV_CAN_H
+#ifndef DRV_CAN_H
 #define DRV_CAN_H
 
 #include "stm32f1xx.h"

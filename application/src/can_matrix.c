@@ -42,3 +42,4 @@ bool CANMatrix_UnpackTelemetry(const uint8_t *payload, CAN_TelemetryStatus_t *ou
     out_telemetry->battery_percent = payload[4];
 
     return true;
+}

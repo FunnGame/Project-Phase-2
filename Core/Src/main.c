@@ -1,8 +1,8 @@
 #include "stm32f1xx.h"
 #include "gateway.h"
 #include "drv_can.h"
-#include "shared/nrf24/nrf24.h"      [cite: 9]
-#include "contracts/rf_protocol.h"   [cite: 9]
+#include "shared/nrf24/nrf24.h"
+#include "contracts/rf_protocol.h"
 
 static rf_control_parser_t rf_parser;
 static nrf24_t             nrf_device;
