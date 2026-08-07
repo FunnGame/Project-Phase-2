@@ -95,7 +95,7 @@
                                  CAR_ENC_EDGE_MULT)
 
 /* Speed sampling. The rate is requested in hertz, so it stays correct at any
- * SYSCLK � unlike the prescaler/period pair it replaces, which was only 100 Hz
+ * SYSCLK — unlike the prescaler/period pair it replaces, which was only 100 Hz
  * if the part happened to be running at 72 MHz. */
 #define CAR_ENC_SAMPLE_TIMER    TIM2
 #define CAR_ENC_SAMPLE_HZ       100u
@@ -104,4 +104,23 @@
 /* ===== Behaviour ========================================================== */
 #define CAR_FAILSAFE_MS         150u
 
+/* PID */
+#define ACC_KP              0.8f
+#define ACC_KI              0.3f
+#define ACC_KD              0.02f
+
+#define ACC_PID_TAU         0.02f
+#define ACC_PID_T           (1.0f / CAR_ENC_SAMPLE_HZ)
+
+#define ACC_limMinInt       -50.0f
+#define ACC_limMaxInt       50.0f
+
+#define ACC_MIN_RPM         0.0f
+#define ACC_MAX_RPM         200.0f
+
+#define ACC_PWM_MAX         100.0f
+
+/* diameter bánh (mm) */
+#define ACC_WHEEL_DIAMETER_MM     65.0f
+#define ACC_WHEEL_CIRCUMFERENCE   (3.1415926f * ACC_WHEEL_DIAMETER_MM)
 #endif
