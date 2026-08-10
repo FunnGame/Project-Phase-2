@@ -1,11 +1,8 @@
 /*
  * can_matrix.c
- *
  * Author: trong
  */
-
 #include "can_matrix.h"
-#include <string.h>
 
 uint8_t CANMatrix_ComputeCRC8(const uint8_t *data, size_t len) {
     uint8_t crc = 0x00U;
@@ -23,8 +20,8 @@ bool CANMatrix_PackControlCmd(const CAN_ControlCmd_t *cmd, uint8_t *out_payload)
 
     out_payload[0] = (uint8_t)cmd->throttle;
     out_payload[1] = (uint8_t)cmd->steering;
-    out_payload[2] = cmd->mode;
-    out_payload[3] = cmd->flags;
+    out_payload[2] = cmd->brake;   /* Cập nhật nhét brake vào byte 2 */
+    out_payload[3] = cmd->buttons; /* Cập nhật nhét buttons vào byte 3 */
     out_payload[4] = cmd->seq;
     out_payload[5] = 0x00U; /* Reserved */
     out_payload[6] = 0x00U; /* Reserved */

@@ -1,26 +1,25 @@
 /*
  * can_matrix.h
- *
  * Author: trong
  */
-
 #ifndef CAN_MATRIX_H
 #define CAN_MATRIX_H
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "contracts/rf_protocol.h"
+#include <stddef.h>
 
 #define CAN_ID_CONTROL_CMD       0x100U
 #define CAN_ID_SENSOR_DISTANCE   0x200U
 #define CAN_ID_TELEMETRY_STATUS  0x300U
 #define CAN_ID_SYSTEM_POST       0x400U
 
+/* Struct đã được cập nhật đồng bộ với RF Protocol mới */
 typedef struct {
     int8_t  throttle;
     int8_t  steering;
-    uint8_t mode;
-    uint8_t flags;
+    uint8_t brake;    /* Thay cho mode */
+    uint8_t buttons;  /* Thay cho flags */
     uint8_t seq;
 } CAN_ControlCmd_t;
 

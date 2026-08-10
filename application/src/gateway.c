@@ -24,8 +24,8 @@ static void Gateway_SendSafeStopCANFrame(void) {
     CAN_ControlCmd_t safe_cmd = {
         .throttle = 0,
         .steering = 0,
-        .mode     = 0, /* MANUAL */
-        .flags    = 0, /* Disarmed */
+        .brake    = 100, /* Đạp phanh khẩn cấp để dừng xe */
+        .buttons  = 0,
         .seq      = can_sequence++
     };
 
@@ -58,27 +58,22 @@ void Gateway_Tick1ms(void) {
     system_ticks++;
     can_tx_timer++;
 
-    /* 1. Kiểm tra Timeout RF (Safe Stop Watchdog) */[cite: 10]
+    /* 1. Kiểm tra Timeout RF (Safe Stop Watchdog) */
     if ((system_ticks - rf_last_rx_timestamp) > RF_TIMEOUT_MS) {
         current_state = ECU3_STATE_SAFE_STOP;
     }
 
-    /* 2. Chu kỳ phát bản tin CAN ID 0x100 (20ms / 50Hz) */[cite: 10]
+    /* 2. Chu kỳ phát bản tin CAN ID 0x100 (20ms / 50Hz) */
     if (can_tx_timer >= CAN_CONTROL_CYCLE_MS) {
         can_tx_timer = 0U;
 
         if (current_state == ECU3_STATE_OPERATIONAL) {
-            /* Chuyển đổi dữ liệu RF thành CAN Command */
-            int16_t mapped_throttle = (int16_t)latest_rf_frame.throttle;
-            if (rf_control_is_reverse(&latest_rf_frame)) {
-                mapped_throttle = -mapped_throttle;
-            }
-
+            /* Truyền thẳng dữ liệu RF sang CAN Matrix */
             CAN_ControlCmd_t cmd = {
-                .throttle = (int8_t)mapped_throttle,
+                .throttle = latest_rf_frame.throttle,
                 .steering = latest_rf_frame.steering,
-                .mode     = 0, /* Manual mode */
-                .flags    = rf_control_is_armed(&latest_rf_frame) ? 0x01U : 0x00U,
+                .brake    = latest_rf_frame.brake,
+                .buttons  = latest_rf_frame.buttons,
                 .seq      = can_sequence++
             };
 

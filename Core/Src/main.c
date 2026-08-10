@@ -1,6 +1,11 @@
-#include "stm32f1xx.h"
+/*
+ * main.c
+ * Author: trong
+ */
+#include "main.h"
 #include "gateway.h"
 #include "drv_can.h"
+#include "drv_spi.h"
 #include "shared/nrf24/nrf24.h"
 #include "contracts/rf_protocol.h"
 
@@ -17,16 +22,28 @@ int main(void) {
 
     /* 2. Hardware & Gateway Layer Init */
     Gateway_Init();
+    SPI2_Init();
+
+    /* Nạp interface SPI vật lý vào thư viện nRF24 của nhánh Vinh */
+    nrf24_hal_t nrf_hal = {
+        .spi_transfer = SPI2_TransmitReceive,
+        .csn_write    = SPI2_CSN_Write,
+        .ce_write     = SPI2_CE_Write,
+        .delay_us     = SPI2_DelayUs
+    };
+    nrf24_init(&nrf_device, &nrf_hal);
+
     rf_control_parser_reset(&rf_parser);
 
     /* 3. Main Operational Loop */
     while (1) {
-        /* A. Luồng xử lý RF Receiver */[cite: 9]
+        /* A. Luồng xử lý RF Receiver */
         if (nrf24_data_available(&nrf_device)) {
             uint8_t raw_byte;
             if (nrf24_read(&nrf_device, &raw_byte, 1U)) {
                 rf_control_frame_t decoded_frame;
-                /* Giải mã dòng byte streaming qua Parser */[cite: 9]
+
+                /* Giải mã dòng byte streaming qua Parser */
                 if (rf_control_parser_feed(&rf_parser, raw_byte, &decoded_frame)) {
                     Gateway_ProcessRFFrame(&decoded_frame);
                 }
@@ -42,5 +59,11 @@ int main(void) {
                 /* Sẵn sàng cho luồng đẩy Telemetry ngược về HMI trạm */
             }
         }
+    }
+}
+
+void Error_Handler(void) {
+    /* Vòng lặp vô hạn khi có lỗi nghiêm trọng */
+    while (1) {
     }
 }
