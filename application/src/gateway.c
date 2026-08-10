@@ -38,7 +38,8 @@ static void Gateway_SendSafeStopCANFrame(void) {
 
 void Gateway_Init(void) {
     DRV_CAN_Init();
-    current_state = ECU3_STATE_OPERATIONAL;
+    /* Khởi động ở trạng thái an toàn, ép gửi CAN ID 0x100 với brake = 100 */
+    current_state = ECU3_STATE_SAFE_STOP;
     rf_last_rx_timestamp = system_ticks;
 }
 

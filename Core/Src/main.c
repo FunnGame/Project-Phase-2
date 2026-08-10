@@ -9,8 +9,8 @@
 #include "shared/nrf24/nrf24.h"
 #include "contracts/rf_protocol.h"
 
-static rf_control_parser_t rf_parser;
-static nrf24_t             nrf_device;
+/* Không còn dùng rf_parser nữa, chỉ cần struct thiết bị */
+static nrf24_t nrf_device;
 
 void SysTick_Handler(void) {
     Gateway_Tick1ms();
@@ -24,28 +24,44 @@ int main(void) {
     Gateway_Init();
     SPI2_Init();
 
-    /* Nạp interface SPI vật lý vào thư viện nRF24 của nhánh Vinh */
+    /* Cấu hình HAL cho nRF24 */
     nrf24_hal_t nrf_hal = {
         .spi_transfer = SPI2_TransmitReceive,
         .csn_write    = SPI2_CSN_Write,
         .ce_write     = SPI2_CE_Write,
         .delay_us     = SPI2_DelayUs
     };
-    nrf24_init(&nrf_device, &nrf_hal);
 
-    rf_control_parser_reset(&rf_parser);
+    /* Cấu hình thông số nRF24 theo chuẩn chung của Vinh */
+    nrf24_config_t nrf_config = {
+        .channel       = 76U,
+        .data_rate     = NRF24_DR_1MBPS,
+        .power         = NRF24_PWR_0DBM,
+        .payload_width = RF_CONTROL_FRAME_SIZE, /* Bắt buộc là 7 byte */
+        .address       = {0x34, 0x43, 0x10, 0x10, 0x01},
+        .auto_ack      = false
+    };
+
+    /* Khởi tạo nRF24 với 3 tham số */
+    if (!nrf24_init(&nrf_device, &nrf_hal, &nrf_config)) {
+        Error_Handler();
+    }
+
+    /* Đưa NRF24 vào chế độ nhận sóng ngay lập tức */
+    nrf24_set_rx_mode(&nrf_device);
 
     /* 3. Main Operational Loop */
     while (1) {
         /* A. Luồng xử lý RF Receiver */
         if (nrf24_data_available(&nrf_device)) {
-            uint8_t raw_byte;
-            if (nrf24_read(&nrf_device, &raw_byte, 1U)) {
-                rf_control_frame_t decoded_frame;
+            rf_control_frame_t received_frame;
 
-                /* Giải mã dòng byte streaming qua Parser */
-                if (rf_control_parser_feed(&rf_parser, raw_byte, &decoded_frame)) {
-                    Gateway_ProcessRFFrame(&decoded_frame);
+            /* Đọc nguyên một frame RF 7 byte */
+            if (nrf24_read(&nrf_device, (uint8_t *)&received_frame, RF_CONTROL_FRAME_SIZE)) {
+                /* Kiểm tra tính hợp lệ của frame (Magic byte, CRC,...) */
+                if (rf_control_frame_valid(&received_frame)) {
+                    /* Chuyển thẳng frame hợp lệ xuống Gateway */
+                    Gateway_ProcessRFFrame(&received_frame);
                 }
             }
         }
@@ -63,7 +79,6 @@ int main(void) {
 }
 
 void Error_Handler(void) {
-    /* Vòng lặp vô hạn khi có lỗi nghiêm trọng */
     while (1) {
     }
 }
