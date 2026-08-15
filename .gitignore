@@ -1,0 +1,19 @@
+# Bỏ qua các thư mục chứa file build tạm
+Objects/
+Listings/
+DebugConfig/
+
+# Bỏ qua các file sinh ra trong quá trình biên dịch (Build/Linker)
+*.o
+*.d
+*.crf
+*.map
+*.axf
+*.htm
+*.lnp
+*.dep
+*.build_log.htm
+
+# Bỏ qua file cấu hình giao diện người dùng của máy cá nhấn
+*.uvgui.*
+*.uvguix.*

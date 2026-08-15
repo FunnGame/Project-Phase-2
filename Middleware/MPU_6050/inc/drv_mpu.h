@@ -20,8 +20,8 @@ typedef enum
 
 /* MPU I2C Address */
 
-#define MPU_I2C_ADDR_AD0_LOW      (0x68U)
-#define MPU_I2C_ADDR_AD0_HIGH     (0x69U)
+#define MPU_I2C_ADDR_AD0_LOW      (0xD0U)
+#define MPU_I2C_ADDR_AD0_HIGH     (0xD2U)
 
 
 /*  MPU Register Map */
