@@ -1,0 +1,64 @@
+VERSION ""
+
+
+NS_ : 
+	NS_DESC_
+	CM_
+	BA_DEF_
+	BA_
+	VAL_
+	CAT_DEF_
+	CAT_
+	FILTER
+	BA_DEF_DEF_
+	EV_DATA_
+	ENVVAR_DATA_
+	SGTYPE_
+	SGTYPE_VAL_
+	BA_DEF_SGTYPE_
+	BA_SGTYPE_
+	SIG_TYPE_REF_
+	VAL_TABLE_
+	SIG_GROUP_
+	SIG_VALTYPE_
+	SIGTYPE_VALTYPE_
+	BO_TX_BU_
+	BA_DEF_REL_
+	BA_REL_
+	BA_DEF_DEF_REL_
+	BU_SG_REL_
+	BU_EV_REL_
+	BU_BO_REL_
+	SG_MUL_VAL_
+
+BS_:
+
+BU_: ECU1 ECU2 ECU3
+
+
+BO_ 256 CONTROL_CMD: 8 ECU3
+ SG_ throttle : 0|8@1- (1,0) [-100|100] "%"  ECU2
+ SG_ steering : 8|8@1- (1,0) [-100|100] "%"  ECU2
+ SG_ brake : 16|8@1+ (1,0) [0|100] "%"  ECU2
+ SG_ buttons : 24|8@1+ (1,0) [0|255] ""  ECU2
+ SG_ sequence : 32|8@1+ (1,0) [0|255] ""  ECU2
+ SG_ crc8 : 56|8@1+ (1,0) [0|255] ""  ECU2
+
+BO_ 512 SENSOR_DISTANCE: 8 ECU1
+ SG_ distance_mm : 0|16@1+ (1,0) [0|65535] "mm"  ECU2,ECU3
+
+BO_ 768 TELEMETRY_STATUS: 8 ECU2
+ SG_ speed_rpm : 0|16@1+ (1,0) [0|65535] "rpm"  ECU3
+ SG_ acc_active : 16|8@1+ (1,0) [0|1] ""  ECU3
+ SG_ aeb_active : 24|8@1+ (1,0) [0|1] ""  ECU3
+ SG_ battery_percent : 32|8@1+ (1,0) [0|100] "%"  ECU3
+
+
+
+CM_ BO_ 256 "RF to CAN Control Command (20ms cycle)";
+CM_ SG_ 256 crc8 "CRC8 polynomial 0x07";
+CM_ BO_ 512 "Sensor distance payload from ECU1 (50ms cycle)";
+CM_ BO_ 768 "Vehicle status telemetry from ECU2 (100ms cycle)";
+VAL_ 768 acc_active 0 "Inactive" 1 "Active" ;
+VAL_ 768 aeb_active 0 "Inactive" 1 "Active" ;
+
