@@ -1,31 +1,33 @@
 /**
  ******************************************************************************
- * @file    car_config.h
- * @brief   Central board configuration for the car's RF gateway node.
+ * @file    vehicle_config.h
+ * @brief   Board configuration for the VEHICLE-CONTROL node
+ *          (STM32F103C8, node 2).
  *
- * Edit pins, ports, peripheral instances and RF-link parameters HERE — main.c
- * reads everything from these macros, so re-wiring never means hunting through
- * the code.
+ * Edit pins, ports, peripheral instances and vehicle geometry HERE — main.c
+ * hard-codes nothing, so re-wiring never means hunting through the code.
  *
- * Default target: STM32F103C8 ("Blue Pill").
+ * This is the only node that can move the car: it owns the TB6612, both wheel
+ * encoders and the indicator LEDs. It has no radio. Its counterpart is
+ * car/nodes/gateway/gateway_config.h.
  *
- * IMPORTANT — the RF section must match station/app/app_config.h exactly, or
- * the two radios will not hear each other.
+ * ALSO READ BY car/devices/tb6612 (tb6612_motor, motor_encoder), which take
+ * their pins from the CAR_MOTOR_* and CAR_ENC_* macros below. Those modules
+ * only ever build into this node.
  ******************************************************************************
  */
-#ifndef CAR_CONFIG_H_
-#define CAR_CONFIG_H_
+#ifndef VEHICLE_CONFIG_H_
+#define VEHICLE_CONFIG_H_
 
 #include "drv_common.h"
 #include "drv_gpio.h"
-#include "drv_spi.h"
 #include "drv_pwm.h"
 #include "drv_encoder.h"
-#include "nrf24.h"
-#include "rf_protocol.h"
+#include "drv_can.h"
+#include "adas.h"         /* cycle times come from the DBC, not from here */
 
 /* ===== System clock ======================================================= */
-/* HSE crystal frequency in Hz.*/
+/* HSE crystal frequency in Hz. */
 #define CAR_HSE_HZ              8000000u
 
 /* ===== Timer budget =======================================================
@@ -33,15 +35,48 @@
  *   TIM2  encoder sample tick  (100 Hz, no pins)
  *   TIM3  motor + LED PWM      (CH1/CH2/CH3 = PA6/PA7/PB0)
  *   TIM4  right wheel encoder  (CH1/CH2 = PB6/PB7)
+ *
+ * All four are spoken for, which is why the 1 ms tick runs on SysTick.
  */
 #define CAR_TICK_IRQ_PRIORITY   1u
 
-/* ===== Status LED ========================================================= */
-#define CAR_LED_STATUS_PORT     GPIOA
-#define CAR_LED_STATUS_PIN      5u
-#define CAR_LED_ACTIVE_LOW      0
+/* ===== CAN vehicle bus ====================================================
+ * drv_can fixes the pins at PB8 (RX) / PB9 (TX) and the rate at 500 kbit/s.
+ * Message layout is contracts/adas.dbc; do not hand-code identifiers.
+ *
+ * PIN NOTE: PB8/PB9 are TIM4 CH3/CH4. TIM4 drives the right encoder on CH1/CH2
+ * (PB6/PB7) but not CH3/CH4, so there is no conflict - check here before
+ * assigning anything new.
+ */
+#define CAR_NODE_ID_VEHICLE     2u        /* NodeAddress VC in adas.dbc       */
 
-/* ===== Indicator LEDs ===================================================== */
+/* CAN_MODE_LOOPBACK drives the wire but needs no ACK and cannot bus-off - use
+ * it when bringing this node up alone. CAN_MODE_NORMAL for real operation.
+ *
+ * CAUTION: in loopback this node never hears the gateway, so no command will
+ * ever arrive and the motors stay stopped. That is safe, but it means loopback
+ * cannot be used to test driving. */
+#define CAR_CAN_MODE            CAN_MODE_NORMAL
+
+/* Transmit periods are taken from the GENERATED header, not duplicated here:
+ * they are a property of the contract, and a copy in each node's config is a
+ * copy that can drift from the DBC. Change GenMsgCycleTime in adas.dbc and
+ * re-run contracts/generate.sh. */
+#define CAR_CAN_STATUS_PERIOD_MS ADAS_VC_STATUS_CYCLE_TIME_MS    /* 0x300, 0x310 */
+#define CAR_CAN_HEARTBEAT_MS     ADAS_VC_HEARTBEAT_CYCLE_TIME_MS /* 0x701        */
+
+/* Three missed cycles of 0x200. The car stops if driver intent goes quiet for
+ * this long - independent of, and faster than, the gateway's RF failsafe. */
+#define CAR_CAN_CMD_TIMEOUT_MS  (3u * ADAS_GATEWAY_DRIVER_CMD_CYCLE_TIME_MS)
+
+/* ===== Status LED ========================================================= */
+#define CAR_LED_STATUS_PORT     GPIOC
+#define CAR_LED_STATUS_PIN      13u
+#define CAR_LED_ACTIVE_LOW      1
+
+/* ===== Indicator LEDs =====================================================
+ * They show what was APPLIED, which only this node knows - the gateway sees
+ * intent, not outcome. */
 #define CAR_DRIVE_TIMER         TIM3
 #define CAR_DRIVE_CHANNEL       PWM_CH3
 #define CAR_DRIVE_PORT          GPIOB
@@ -121,32 +156,13 @@
 #define CAR_ENC_SAMPLE_HZ       100u
 #define CAR_ENC_SAMPLE_IRQ_PRIORITY  2u
 
-/* ===== nRF24 SPI bus ====================================================== */
-/* SPI2 on the F103: PB13 SCK, PB14 MISO, PB15 MOSI. */
-#define CAR_NRF_SPI             SPI2
-#define CAR_NRF_SPI_PORT        GPIOB
-#define CAR_NRF_SCK_PIN         13u
-#define CAR_NRF_MISO_PIN        14u
-#define CAR_NRF_MOSI_PIN        15u
-#define CAR_NRF_SPI_BAUD        SPI_BAUD_DIV8   /* 36 MHz PCLK1 / 8 = 4.5 MHz */
+/* ===== Vehicle geometry ===================================================
+ * Needed to turn encoder RPM into the mm/s and mrad/s that VC_Motion carries.
+ *
+ * MEASURE THESE. They are plausible defaults for a small differential-drive
+ * chassis, not measured values, and every speed the AEB reasons about scales
+ * directly with the wheel diameter. */
+#define CAR_WHEEL_DIAMETER_MM   65.0f     /* tyre outer diameter              */
+#define CAR_TRACK_WIDTH_MM      150.0f    /* centre-to-centre, drive wheels   */
 
-/* ===== nRF24 control lines ================================================ */
-#define CAR_NRF_CSN_PORT        GPIOB
-#define CAR_NRF_CSN_PIN         12u
-#define CAR_NRF_CE_PORT         GPIOB
-#define CAR_NRF_CE_PIN          10u
-#define CAR_NRF_IRQ_PORT        GPIOB
-#define CAR_NRF_IRQ_PIN         11u
-
-/* ===== RF link parameters — MUST MATCH THE STATION ======================== */
-#define CAR_RF_CHANNEL          76u
-#define CAR_RF_ADDRESS          { 0xE7u, 0xE7u, 0xE7u, 0xE7u, 0xE7u }
-#define CAR_RF_PAYLOAD          RF_CONTROL_FRAME_SIZE   /* 7 bytes */
-#define CAR_RF_DATARATE         NRF24_DR_1MBPS
-#define CAR_RF_POWER            NRF24_PWR_0DBM
-#define CAR_RF_AUTO_ACK         true
-
-/* ===== Behaviour ========================================================== */
-#define CAR_FAILSAFE_MS         150u
-
-#endif /* CAR_CONFIG_H_ */
+#endif /* VEHICLE_CONFIG_H_ */
