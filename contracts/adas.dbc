@@ -1,0 +1,192 @@
+VERSION "1.0"
+
+
+NS_ :
+	NS_DESC_
+	CM_
+	BA_DEF_
+	BA_
+	VAL_
+	CAT_DEF_
+	CAT_
+	FILTER
+	BA_DEF_DEF_
+	EV_DATA_
+	ENVVAR_DATA_
+	SGTYPE_
+	SGTYPE_VAL_
+	BA_DEF_SGTYPE_
+	BA_SGTYPE_
+	SIG_TYPE_REF_
+	VAL_TABLE_
+	SIG_GROUP_
+	SIG_VALTYPE_
+	SIGTYPE_VALTYPE_
+	BO_TX_BU_
+	BA_DEF_REL_
+	BA_REL_
+	BA_DEF_DEF_REL_
+	BU_SG_REL_
+	BU_EV_REL_
+	BU_BO_REL_
+	SG_MUL_VAL_
+
+BS_:
+
+BU_: GW VC SF
+
+
+BO_ 256 SensorFront_Object: 8 SF
+ SG_ SF_E2eCrc : 0|8@1+ (1,0) [0|255] "" VC
+ SG_ SF_E2eAlv : 8|4@1+ (1,0) [0|15] "" VC
+ SG_ SF_ObjCount : 12|2@1+ (1,0) [0|3] "" VC
+ SG_ SF_SampleAge : 14|2@1+ (20,0) [0|60] "ms" VC
+ SG_ SF_Range : 16|16@1+ (1,0) [0|4000] "mm" VC
+ SG_ SF_RangeRate : 32|16@1- (1,0) [-8000|8000] "mm/s" VC
+ SG_ SF_TrackAge : 48|8@1+ (1,0) [0|255] "cycles" VC
+ SG_ SF_Status : 56|2@1+ (1,0) [0|3] "" VC
+ SG_ SF_Confidence : 58|6@1+ (1,0) [0|63] "" VC
+
+BO_ 257 SensorFront_Raw: 8 SF
+ SG_ SFR_E2eCrc : 0|8@1+ (1,0) [0|255] "" VC
+ SG_ SFR_E2eAlv : 8|4@1+ (1,0) [0|15] "" VC
+ SG_ SFR_SensorIdx : 12|4@1+ (1,0) [0|15] "" VC
+ SG_ SFR_Range : 16|16@1+ (1,0) [0|4000] "mm" VC
+ SG_ SFR_RangeRate : 32|16@1- (1,0) [-8000|8000] "mm/s" VC
+ SG_ SFR_Status : 48|2@1+ (1,0) [0|3] "" VC
+ SG_ SFR_Confidence : 50|6@1+ (1,0) [0|63] "" VC
+ SG_ SFR_SlotAge : 56|8@1+ (1,0) [0|255] "ms" VC
+
+BO_ 512 Gateway_DriverCmd: 8 GW
+ SG_ GW_E2eCrc : 0|8@1+ (1,0) [0|255] "" VC
+ SG_ GW_E2eAlv : 8|4@1+ (1,0) [0|15] "" VC
+ SG_ GW_LinkQuality : 12|4@1+ (1,0) [0|15] "" VC
+ SG_ GW_Steering : 16|8@1- (1,0) [-100|100] "%" VC
+ SG_ GW_Throttle : 24|8@1+ (1,0) [0|100] "%" VC
+ SG_ GW_Brake : 32|8@1+ (1,0) [0|100] "%" VC
+ SG_ GW_Reverse : 40|1@1+ (1,0) [0|1] "" VC
+ SG_ GW_Armed : 41|1@1+ (1,0) [0|1] "" VC
+ SG_ GW_LinkOk : 42|1@1+ (1,0) [0|1] "" VC
+ SG_ GW_RfSeq : 48|8@1+ (1,0) [0|255] "" VC
+ SG_ GW_FrameAge : 56|8@1+ (1,0) [0|255] "ms" VC
+
+BO_ 768 VC_Status: 8 VC
+ SG_ VC_E2eCrc : 0|8@1+ (1,0) [0|255] "" GW
+ SG_ VC_E2eAlv : 8|4@1+ (1,0) [0|15] "" GW
+ SG_ VC_ArbWinnerLong : 12|2@1+ (1,0) [0|3] "" GW
+ SG_ VC_ArbWinnerYaw : 14|2@1+ (1,0) [0|3] "" GW
+ SG_ VC_VehicleState : 16|3@1+ (1,0) [0|7] "" GW
+ SG_ VC_AebState : 19|3@1+ (1,0) [0|7] "" GW
+ SG_ VC_Degraded : 22|1@1+ (1,0) [0|1] "" GW
+ SG_ VC_Faults : 24|8@1+ (1,0) [0|255] "" GW
+ SG_ VC_AppliedThrottle : 32|8@1+ (1,0) [0|100] "%" GW
+ SG_ VC_AppliedBrake : 40|8@1+ (1,0) [0|100] "%" GW
+ SG_ VC_AppliedSteering : 48|8@1- (1,0) [-100|100] "%" GW
+ SG_ VC_E2eErrCount : 56|8@1+ (1,0) [0|255] "" GW
+
+BO_ 784 VC_Motion: 8 VC
+ SG_ VCM_E2eCrc : 0|8@1+ (1,0) [0|255] "" GW
+ SG_ VCM_E2eAlv : 8|4@1+ (1,0) [0|15] "" GW
+ SG_ VCM_Reserved : 12|4@1+ (1,0) [0|15] "" GW
+ SG_ VCM_Speed : 16|16@1- (1,0) [-3000|3000] "mm/s" GW
+ SG_ VCM_YawRate : 32|16@1- (1,0) [-6000|6000] "mrad/s" GW
+ SG_ VCM_LpbDistance : 48|16@1+ (1,0) [0|4000] "mm" GW
+
+BO_ 1792 GW_Heartbeat: 8 GW
+ SG_ HBGW_E2eCrc : 0|8@1+ (1,0) [0|255] "" VC,SF
+ SG_ HBGW_E2eAlv : 8|4@1+ (1,0) [0|15] "" VC,SF
+ SG_ HBGW_NodeId : 12|4@1+ (1,0) [0|15] "" VC,SF
+ SG_ HBGW_NodeState : 16|4@1+ (1,0) [0|15] "" VC,SF
+ SG_ HBGW_ResetReason : 20|4@1+ (1,0) [0|15] "" VC,SF
+ SG_ HBGW_Uptime : 24|16@1+ (1,0) [0|65535] "s" VC,SF
+ SG_ HBGW_CanTec : 40|8@1+ (1,0) [0|255] "" VC,SF
+ SG_ HBGW_CanRec : 48|8@1+ (1,0) [0|255] "" VC,SF
+
+BO_ 1793 VC_Heartbeat: 8 VC
+ SG_ HBVC_E2eCrc : 0|8@1+ (1,0) [0|255] "" GW,SF
+ SG_ HBVC_E2eAlv : 8|4@1+ (1,0) [0|15] "" GW,SF
+ SG_ HBVC_NodeId : 12|4@1+ (1,0) [0|15] "" GW,SF
+ SG_ HBVC_NodeState : 16|4@1+ (1,0) [0|15] "" GW,SF
+ SG_ HBVC_ResetReason : 20|4@1+ (1,0) [0|15] "" GW,SF
+ SG_ HBVC_Uptime : 24|16@1+ (1,0) [0|65535] "s" GW,SF
+ SG_ HBVC_CanTec : 40|8@1+ (1,0) [0|255] "" GW,SF
+ SG_ HBVC_CanRec : 48|8@1+ (1,0) [0|255] "" GW,SF
+
+BO_ 1794 SF_Heartbeat: 8 SF
+ SG_ HBSF_E2eCrc : 0|8@1+ (1,0) [0|255] "" GW,VC
+ SG_ HBSF_E2eAlv : 8|4@1+ (1,0) [0|15] "" GW,VC
+ SG_ HBSF_NodeId : 12|4@1+ (1,0) [0|15] "" GW,VC
+ SG_ HBSF_NodeState : 16|4@1+ (1,0) [0|15] "" GW,VC
+ SG_ HBSF_ResetReason : 20|4@1+ (1,0) [0|15] "" GW,VC
+ SG_ HBSF_Uptime : 24|16@1+ (1,0) [0|65535] "s" GW,VC
+ SG_ HBSF_CanTec : 40|8@1+ (1,0) [0|255] "" GW,VC
+ SG_ HBSF_CanRec : 48|8@1+ (1,0) [0|255] "" GW,VC
+
+
+CM_ "ADAS vehicle bus. 500 kbit/s, 11-bit identifiers, little-endian (Intel) signal layout throughout. Identifier order IS priority order: sensor object lists (0x100) outrank the driver command (0x200) so a sensor veto is never delayed by operator input. THREE nodes: gateway, vehicle control, and one front sensor node carrying a four-element VL53L0X array. Identifiers 0x110 (SensorSide_Object), 0x111 (SensorSide_Raw), 0x703 (SS_Heartbeat) and NodeAddress 4 are RESERVED for a side sensor node - held free so adding one later needs no renumbering.";
+CM_ BU_ GW "Gateway node, STM32F103. Bridges the 2.4 GHz operator link to the vehicle bus. Publishes driver intent, consumes vehicle status for telemetry.";
+CM_ BU_ VC "Vehicle control node, STM32F103. Consumes object lists and driver intent, arbitrates per axis, runs AEB, drives the TB6612 and reads the encoders.";
+CM_ BU_ SF "Front sensor node, STM32F103. VL53L0X time-of-flight array, tracking done locally.";
+CM_ BO_ 256 "Front fused object - the closest in-path object across every sensor on the node. THE AEB INPUT PATH, and the only sensor message the vehicle-control node needs to act. Event-triggered: transmitted whenever any sensor produces a new measurement, so ~13 ms with four sensors on a 50 ms timing budget. GenMsgCycleTime is a watchdog maximum, not a promise.";
+CM_ BO_ 257 "Front per-sensor raw ranges, round-robin. Sensors measure concurrently on a 50 ms budget; one sensor is transmitted per slot, so every index refreshes within 50 ms. Diagnostics and the wider situational picture - NOT the AEB path. Deliberately lower priority than 0x100.";
+CM_ BO_ 512 "Driver intent, a byte-for-byte translation of the RF control frame in contracts/rf_protocol.h. The gateway performs no interpretation.";
+CM_ BO_ 768 "Vehicle control state, faults, and what was actually applied to the actuators. Cycle 20 ms.";
+CM_ BO_ 784 "Measured vehicle motion plus the AEB last-point-to-brake distance. Cycle 20 ms.";
+CM_ BO_ 1792 "Gateway liveness. Cycle 100 ms. Absence for 300 ms is a node-loss fault.";
+CM_ BO_ 1793 "Vehicle control liveness. Cycle 100 ms.";
+CM_ BO_ 1794 "Front sensor liveness. Cycle 100 ms.";
+CM_ SG_ 256 SF_E2eCrc "AUTOSAR E2E Profile 1 style CRC-8 (poly 0x1D) over the CAN identifier used as Data ID, then payload bytes 1..7.";
+CM_ SG_ 256 SF_E2eAlv "Alive counter, increments modulo 16 each transmission. The receiver rejects a repeated or skipped value.";
+CM_ SG_ 256 SF_Range "Distance to the closest in-path object. 0 is only valid when SF_Status is NO_TARGET.";
+CM_ SG_ 256 SF_RangeRate "Signed range rate. NEGATIVE means closing - this is the sign convention AEB depends on.";
+CM_ SG_ 256 SF_TrackAge "Consecutive cycles this track has been associated. AEB requires a minimum age before it will act.";
+CM_ SG_ 256 SF_Confidence "Monotonic 0..63 quality score. Not a percentage.";
+CM_ SG_ 256 SF_ObjCount "How many sensors on this node currently report a valid in-path target. 0 means the fused fields carry no object.";
+CM_ SG_ 256 SF_SampleAge "Age of the underlying measurement when this frame was transmitted, in 20 ms steps. Event-triggered transmission should keep this at 0; a persistently non-zero value means the node is publishing faster than it is measuring, and the receiver is seeing repeats.";
+CM_ SG_ 257 SFR_SensorIdx "Which physical sensor this frame describes, 0..N-1 in the node's own wiring-table order. The layout is identical for every index, so this is a plain field rather than a DBC multiplexor.";
+CM_ SG_ 257 SFR_SlotAge "Milliseconds between this sensor's measurement completing and this frame being transmitted. Near zero when the measurement starts are staggered to match the transmit slots; large values mean the stagger has drifted and readings are going out stale.";
+CM_ SG_ 512 GW_Steering "Mirrors rf_control_frame_t.steering, -100 full left to +100 full right.";
+CM_ SG_ 512 GW_LinkOk "Cleared when the RF failsafe timeout (150 ms) has expired. The command fields are zeroed at the same time, so a stale command cannot be acted upon.";
+CM_ SG_ 512 GW_RfSeq "Mirrors the RF frame sequence number, carried onto CAN so end-to-end latency can be measured from one trace.";
+CM_ SG_ 512 GW_FrameAge "Milliseconds between RF reception and CAN transmission.";
+CM_ SG_ 512 GW_LinkQuality "Valid RF frames received in the last 16 expected slots.";
+CM_ SG_ 768 VC_Faults "Bitfield: 0 CAN bus-off, 1 front sensor timeout, 2 RESERVED (side sensor timeout - no side node in the three-MCU build), 3 gateway timeout, 4 E2E failure, 5 motor fault, 6 encoder fault, 7 clock fault.";
+CM_ SG_ 768 VC_E2eErrCount "Saturating count of E2E rejections since reset. Non-zero is a bus integrity problem, not a transient.";
+CM_ SG_ 784 VCM_Speed "Longitudinal speed from the wheel encoders. Positive is forward.";
+CM_ SG_ 784 VCM_LpbDistance "Last-point-to-brake distance the AEB currently computes for the measured speed. Published so the ten-run validation protocol can be scored from a bus trace alone.";
+
+
+BA_DEF_ BO_  "GenMsgCycleTime" INT 0 10000;
+BA_DEF_ BU_  "NodeAddress" INT 0 15;
+BA_DEF_  "BusType" STRING ;
+BA_DEF_  "Baudrate" INT 0 1000000;
+BA_DEF_DEF_  "GenMsgCycleTime" 0;
+BA_DEF_DEF_  "NodeAddress" 0;
+BA_DEF_DEF_  "BusType" "CAN";
+BA_DEF_DEF_  "Baudrate" 500000;
+BA_ "BusType" "CAN";
+BA_ "Baudrate" 500000;
+BA_ "NodeAddress" BU_ GW 1;
+BA_ "NodeAddress" BU_ VC 2;
+BA_ "NodeAddress" BU_ SF 3;
+BA_ "GenMsgCycleTime" BO_ 256 13;
+BA_ "GenMsgCycleTime" BO_ 257 13;
+BA_ "GenMsgCycleTime" BO_ 512 20;
+BA_ "GenMsgCycleTime" BO_ 768 20;
+BA_ "GenMsgCycleTime" BO_ 784 20;
+BA_ "GenMsgCycleTime" BO_ 1792 100;
+BA_ "GenMsgCycleTime" BO_ 1793 100;
+BA_ "GenMsgCycleTime" BO_ 1794 100;
+
+VAL_ 256 SF_Status 0 "NO_TARGET" 1 "VALID" 2 "DEGRADED" 3 "FAULT" ;
+VAL_ 257 SFR_Status 0 "NO_TARGET" 1 "VALID" 2 "DEGRADED" 3 "FAULT" ;
+VAL_ 768 VC_VehicleState 0 "INIT" 1 "FAILSAFE" 2 "DISARMED" 3 "ARMED" 4 "DEGRADED" 5 "FAULT" ;
+VAL_ 768 VC_AebState 0 "IDLE" 1 "WARN" 2 "PARTIAL" 3 "FULL" 4 "LATCHED" ;
+VAL_ 768 VC_ArbWinnerLong 0 "NONE" 1 "DRIVER" 2 "AEB" 3 "FAILSAFE" ;
+VAL_ 768 VC_ArbWinnerYaw 0 "NONE" 1 "DRIVER" 2 "AUTONOMOUS" 3 "FAILSAFE" ;
+VAL_ 1792 HBGW_NodeState 0 "BOOT" 1 "RUN" 2 "DEGRADED" 3 "FAULT" 4 "SHUTDOWN" ;
+VAL_ 1793 HBVC_NodeState 0 "BOOT" 1 "RUN" 2 "DEGRADED" 3 "FAULT" 4 "SHUTDOWN" ;
+VAL_ 1794 HBSF_NodeState 0 "BOOT" 1 "RUN" 2 "DEGRADED" 3 "FAULT" 4 "SHUTDOWN" ;
+VAL_ 1792 HBGW_ResetReason 0 "UNKNOWN" 1 "POWER_ON" 2 "PIN" 3 "SOFTWARE" 4 "IWDG" 5 "WWDG" 6 "LOW_POWER" ;
+VAL_ 1793 HBVC_ResetReason 0 "UNKNOWN" 1 "POWER_ON" 2 "PIN" 3 "SOFTWARE" 4 "IWDG" 5 "WWDG" 6 "LOW_POWER" ;
+VAL_ 1794 HBSF_ResetReason 0 "UNKNOWN" 1 "POWER_ON" 2 "PIN" 3 "SOFTWARE" 4 "IWDG" 5 "WWDG" 6 "LOW_POWER" ;
