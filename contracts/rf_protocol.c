@@ -35,6 +35,26 @@ void rf_control_frame_finalize(rf_control_frame_t *frame)
     frame->crc = rf_control_crc8(bytes, RF_CONTROL_FRAME_SIZE - 1u);
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Telemetry (car -> station)                                                */
+/* -------------------------------------------------------------------------- */
+
+bool rf_telemetry_frame_valid(const rf_telemetry_frame_t *frame)
+{
+    if (frame->magic != RF_TELEM_MAGIC) {
+        return false;
+    }
+    const uint8_t *bytes = (const uint8_t *)frame;
+    return frame->crc == rf_control_crc8(bytes, RF_TELEM_FRAME_SIZE - 1u);
+}
+
+void rf_telemetry_frame_finalize(rf_telemetry_frame_t *frame)
+{
+    frame->magic = RF_TELEM_MAGIC;
+    const uint8_t *bytes = (const uint8_t *)frame;
+    frame->crc = rf_control_crc8(bytes, RF_TELEM_FRAME_SIZE - 1u);
+}
+
 void rf_control_parser_reset(rf_control_parser_t *p)
 {
     p->idx = 0u;
