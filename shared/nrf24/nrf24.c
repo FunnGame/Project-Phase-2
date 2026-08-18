@@ -15,6 +15,8 @@
 #define CMD_W_TX_PAYLOAD    0xA0u
 #define CMD_FLUSH_TX        0xE1u
 #define CMD_FLUSH_RX        0xE2u
+#define CMD_R_RX_PL_WID     0x60u
+#define CMD_W_ACK_PAYLOAD   0xA8u  /* | pipe */
 #define CMD_NOP             0xFFu
 
 /* ---- Registers ----------------------------------------------------------- */
@@ -32,6 +34,10 @@
 #define REG_FIFO_STATUS     0x17u
 #define REG_DYNPD           0x1Cu
 #define REG_FEATURE         0x1Du
+
+/* ---- FEATURE bits -------------------------------------------------------- */
+#define FEATURE_EN_DPL      0x04u
+#define FEATURE_EN_ACK_PAY  0x02u
 
 /* ---- CONFIG bits --------------------------------------------------------- */
 #define CONFIG_EN_CRC       0x08u
@@ -159,8 +165,20 @@ bool nrf24_init(nrf24_t *dev, const nrf24_hal_t *hal, const nrf24_config_t *cfg)
     /* Fixed payload width on pipe 0; no dynamic payloads. */
     nrf24_write_reg(dev, REG_EN_RXADDR, 0x01u);
     nrf24_write_reg(dev, REG_RX_PW_P0, dev->payload_width);
-    nrf24_write_reg(dev, REG_DYNPD, 0x00u);
-    nrf24_write_reg(dev, REG_FEATURE, 0x00u);
+    /* Dynamic payload length + ACK payloads, or neither.
+     *
+     * The nRF24 has no fixed-width ACK payload mode: EN_ACK_PAY requires EN_DPL
+     * and DYNPD for the pipe. Both ends must agree - a receiver attaching
+     * payloads to a transmitter that has not enabled them leaves data stuck in
+     * the transmitter's RX FIFO until it blocks. */
+    dev->ack_payload = (cfg->ack_payload && cfg->auto_ack);
+    if (dev->ack_payload) {
+        nrf24_write_reg(dev, REG_FEATURE, FEATURE_EN_DPL | FEATURE_EN_ACK_PAY);
+        nrf24_write_reg(dev, REG_DYNPD, 0x01u);        /* pipe 0 */
+    } else {
+        nrf24_write_reg(dev, REG_DYNPD, 0x00u);
+        nrf24_write_reg(dev, REG_FEATURE, 0x00u);
+    }
 
     /* Clear FIFOs and any latched IRQ flags. */
     nrf24_command(dev, CMD_FLUSH_TX);
@@ -182,6 +200,79 @@ bool nrf24_init(nrf24_t *dev, const nrf24_hal_t *hal, const nrf24_config_t *cfg)
         nrf24_write_reg(dev, REG_RF_CH, expect);
     }
     return false;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  ACK payloads                                                              */
+/* -------------------------------------------------------------------------- */
+
+bool nrf24_write_ack_payload(nrf24_t *dev, uint8_t pipe,
+                             const uint8_t *data, uint8_t len)
+{
+    uint8_t tx[1u + NRF24_MAX_PAYLOAD];
+
+    if ((dev == NULL) || (data == NULL) || !dev->ack_payload ||
+        (pipe > 5u) || (len == 0u) || (len > NRF24_MAX_PAYLOAD)) {
+        return false;
+    }
+
+    tx[0] = (uint8_t)(CMD_W_ACK_PAYLOAD | pipe);
+    memcpy(&tx[1], data, len);
+
+    dev->hal->csn_write(false);
+    dev->hal->spi_transfer(tx, NULL, (size_t)len + 1u);
+    dev->hal->csn_write(true);
+    return true;
+}
+
+bool nrf24_read_ack_payload(nrf24_t *dev, uint8_t *buf, uint8_t max_len,
+                            uint8_t *out_len)
+{
+    uint8_t width = 0u;
+
+    if ((dev == NULL) || (buf == NULL) || !dev->ack_payload) {
+        return false;
+    }
+    if ((nrf24_status(dev) & STATUS_RX_DR) == 0u) {
+        return false;                      /* no payload came back - normal */
+    }
+
+    /* Length lives with the payload, not in a register, so it must be read
+     * before the payload itself. */
+    {
+        uint8_t tx[2] = { CMD_R_RX_PL_WID, CMD_NOP };
+        uint8_t rx[2] = { 0u, 0u };
+        dev->hal->csn_write(false);
+        dev->hal->spi_transfer(tx, rx, 2);
+        dev->hal->csn_write(true);
+        width = rx[1];
+    }
+
+    /* "> 32 means corrupt, flush it" is the datasheet's own instruction. A
+     * payload too big for the caller is discarded rather than truncated: half a
+     * frame that still passes a length check is worse than none. */
+    if ((width == 0u) || (width > NRF24_MAX_PAYLOAD) || (width > max_len)) {
+        nrf24_command(dev, CMD_FLUSH_RX);
+        nrf24_write_reg(dev, REG_STATUS, STATUS_RX_DR);
+        return false;
+    }
+
+    {
+        uint8_t tx[1u + NRF24_MAX_PAYLOAD];
+        uint8_t rx[1u + NRF24_MAX_PAYLOAD];
+        memset(tx, CMD_NOP, sizeof(tx));
+        tx[0] = CMD_R_RX_PAYLOAD;
+        dev->hal->csn_write(false);
+        dev->hal->spi_transfer(tx, rx, (size_t)width + 1u);
+        dev->hal->csn_write(true);
+        memcpy(buf, &rx[1], width);
+    }
+
+    nrf24_write_reg(dev, REG_STATUS, STATUS_RX_DR);
+    if (out_len != NULL) {
+        *out_len = width;
+    }
+    return true;
 }
 
 uint8_t nrf24_read_register(const nrf24_t *dev, uint8_t reg)

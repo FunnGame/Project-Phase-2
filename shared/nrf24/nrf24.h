@@ -71,12 +71,26 @@ typedef struct {
     uint8_t          payload_width;           /**< Fixed payload 1..32.      */
     uint8_t          address[NRF24_ADDR_WIDTH]; /**< TX / RX pipe-0 address.  */
     bool             auto_ack;                /**< Enable Enhanced ShockBurst.*/
+    /**
+     * @brief Let the receiver attach a payload to its acknowledgement.
+     *
+     * The ACK is already being sent, so the return data costs NO extra airtime
+     * and cannot collide with the forward link. This is how the car returns
+     * telemetry without ever becoming a transmitter.
+     *
+     * Requires auto_ack, and enables dynamic payload length on pipe 0 - the
+     * nRF24 has no fixed-width ACK payload mode. MUST match on both ends: a
+     * receiver attaching payloads to a transmitter that is not expecting them
+     * leaves data stuck in the transmitter's RX FIFO until it blocks.
+     */
+    bool             ack_payload;
 } nrf24_config_t;
 
 /** @brief Driver instance. Treat as opaque; initialise with nrf24_init(). */
 typedef struct {
     const nrf24_hal_t *hal;
     uint8_t payload_width;
+    bool    ack_payload;   /**< dynamic payload length is on */
 } nrf24_t;
 
 /**
@@ -112,6 +126,41 @@ bool nrf24_read(nrf24_t *dev, uint8_t *buf, uint8_t len);
 
 /** @brief Power the radio down (lowest current; must re-enter TX/RX to use). */
 void nrf24_power_down(nrf24_t *dev);
+
+/* -------------------------------------------------------------------------- */
+/*  ACK payloads (requires cfg.ack_payload on BOTH ends)                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * @brief RECEIVER side: queue bytes to ride out on the next acknowledgement.
+ * @param dev  Radio in PRX mode.
+ * @param pipe Pipe the payload answers, 0..5. Use 0 for a single-pipe link.
+ * @param data Payload, 1..32 bytes.
+ * @param len  Payload length.
+ * @return true if it was queued.
+ *
+ * The payload is consumed by the NEXT packet received on that pipe, so call
+ * this after handling each packet to keep one always ready. The chip holds up
+ * to three; queueing faster than packets arrive fills the FIFO and the oldest
+ * data goes out first, which for telemetry means STALE data. Queue exactly one
+ * per received packet.
+ */
+bool nrf24_write_ack_payload(nrf24_t *dev, uint8_t pipe,
+                             const uint8_t *data, uint8_t len);
+
+/**
+ * @brief TRANSMITTER side: collect the payload that came back with the ACK.
+ * @param dev     Radio in PTX mode, immediately after nrf24_send() returned OK.
+ * @param buf     Destination.
+ * @param max_len Size of @p buf; a longer payload is discarded, not truncated.
+ * @param out_len Receives the actual length.
+ * @return true if a payload was waiting.
+ *
+ * Not every ACK carries one - the receiver may not have queued anything yet -
+ * so a false return is normal, not an error.
+ */
+bool nrf24_read_ack_payload(nrf24_t *dev, uint8_t *buf, uint8_t max_len,
+                            uint8_t *out_len);
 
 /* -------------------------------------------------------------------------- */
 /*  Diagnostics                                                               */
