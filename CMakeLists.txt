@@ -1,19 +1,23 @@
 # ---------------------------------------------------------------------------
 # Project Phase 2 — firmware build for both MCUs.
 #
-#   station : STM32F446RE (Cortex-M4)  laptop UART  -> nRF24
-#   car     : STM32F103C8 (Cortex-M3)  nRF24        -> motors / LEDs
+#   station         : STM32F446RE (M4)  laptop UART -> nRF24
+#   gateway         : STM32F103C8 (M3)  nRF24       -> CAN
+#   vehicle_control : STM32F103C8 (M3)  CAN         -> TB6612 motors / encoders
+#   sensor          : STM32F103C8 (M3)  VL53L0X     -> CAN
 #
 # Both link the same portable modules (contracts/rf_protocol, shared/nrf24),
 # each with its own driver layer.
 #
 # Configure and build:
 #   cmake -B build -G Ninja --toolchain cmake/arm-none-eabi.cmake
-#   cmake --build build                 # both
-#   cmake --build build --target car    # just one
+#   cmake --build build                     # everything
+#   cmake --build build --target gateway    # just one
 #
 # Flash (needs OpenOCD; see OPENOCD_BIN below):
-#   cmake --build build --target flash-car
+#   cmake --build build --target flash-gateway
+#   cmake --build build --target flash-vehicle-control
+#   cmake --build build --target flash-sensor
 #   cmake --build build --target flash-station
 #
 # The C# control app is NOT part of this build — it is a .NET project:
@@ -32,6 +36,11 @@ set(CMAKE_C_EXTENSIONS OFF)
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE MinSizeRel CACHE STRING "" FORCE)
 endif()
+
+# Emit build/compile_commands.json so the editor sees each file's REAL include
+# paths and defines. Without it a mixed-toolchain project like this one has to
+# be described twice — once here, once in .vscode — and the two drift.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ---------------------------------------------------------------------------
 # Flags common to both MCUs
@@ -110,6 +119,7 @@ endfunction()
 # station — STM32F446RE, Cortex-M4 (soft float: no FPU instructions emitted)
 # ---------------------------------------------------------------------------
 file(GLOB STATION_DRIVERS CONFIGURE_DEPENDS station/drivers/*.c)
+file(GLOB STATION_DEVICES CONFIGURE_DEPENDS station/devices/ili9341/*.c)
 
 add_firmware(station
     CPU     "-mcpu=cortex-m4 -mthumb"
@@ -117,23 +127,65 @@ add_firmware(station
     LINKER  ${CMAKE_SOURCE_DIR}/platform/f446/STM32F446RETX_FLASH.ld
     SOURCES
         ${STATION_DRIVERS}
+        ${STATION_DEVICES}
         station/app/main.c
         platform/f446/system_stm32f4xx.c
         platform/f446/startup_stm32f446retx.s
     INCLUDES
         ${CMAKE_SOURCE_DIR}/station/drivers
+        ${CMAKE_SOURCE_DIR}/station/devices/ili9341
         ${CMAKE_SOURCE_DIR}/station/app
         ${CMAKE_SOURCE_DIR}/platform/f446
 )
 
 # ---------------------------------------------------------------------------
-# car — STM32F103C8, Cortex-M3
+# The car is THREE STM32F103C8 boards on one CAN bus. They share car/drivers,
+# the generated CAN packers and the E2E layer; each adds only the peripherals
+# it owns, and each keeps its OWN <node>_config.h beside its main.c.
+#
+#   gateway         nRF24 radio -> CAN                 (no actuators)
+#   vehicle_control CAN -> TB6612 motors, encoders     (the only node that moves the car)
+#   sensor          VL53L0X -> CAN
 # ---------------------------------------------------------------------------
 file(GLOB CAR_DRIVERS CONFIGURE_DEPENDS car/drivers/*.c)
 file(GLOB CAR_DEVICES CONFIGURE_DEPENDS car/devices/tb6612/*.c)
 file(GLOB CAR_MIXER   CONFIGURE_DEPENDS car/lib/mixer/*.c)
 
-add_firmware(car
+# Shared by every car node.
+set(CAR_COMMON_SOURCES
+    ${CMAKE_SOURCE_DIR}/contracts/gen/adas.c
+    ${CMAKE_SOURCE_DIR}/shared/e2e/e2e.c
+)
+set(CAR_COMMON_INCLUDES
+    ${CMAKE_SOURCE_DIR}/car/drivers
+    ${CMAKE_SOURCE_DIR}/contracts/gen
+    ${CMAKE_SOURCE_DIR}/shared/e2e
+    ${CMAKE_SOURCE_DIR}/platform/f103
+)
+
+# ---------------------------------------------------------------------------
+# gateway — radio to CAN. Was the `car` target before the three-way split;
+# it no longer links the mixer or the TB6612, because it drives nothing.
+# ---------------------------------------------------------------------------
+add_firmware(gateway
+    CPU     "-mcpu=cortex-m3 -mthumb"
+    DEVICE  STM32F103xB
+    LINKER  ${CMAKE_SOURCE_DIR}/platform/f103/STM32F103C8TX_FLASH.ld
+    SOURCES
+        ${CAR_DRIVERS}
+        ${CAR_COMMON_SOURCES}
+        car/nodes/gateway/main.c
+        platform/f103/system_stm32f1xx.c
+        platform/f103/startup_stm32f103c8tx.s
+    INCLUDES
+        ${CAR_COMMON_INCLUDES}
+        ${CMAKE_SOURCE_DIR}/car/nodes/gateway
+)
+
+# ---------------------------------------------------------------------------
+# vehicle_control — CAN to motors. Owns everything that can move the car.
+# ---------------------------------------------------------------------------
+add_firmware(vehicle_control
     CPU     "-mcpu=cortex-m3 -mthumb"
     DEVICE  STM32F103xB
     LINKER  ${CMAKE_SOURCE_DIR}/platform/f103/STM32F103C8TX_FLASH.ld
@@ -141,16 +193,59 @@ add_firmware(car
         ${CAR_DRIVERS}
         ${CAR_DEVICES}
         ${CAR_MIXER}
-        car/nodes/gateway/main.c
+        ${CAR_COMMON_SOURCES}
+        car/nodes/vehicle_control/main.c
+        platform/f103/system_stm32f1xx.c
+        platform/f103/startup_stm32f103c8tx.s
+    INCLUDES
+        ${CAR_COMMON_INCLUDES}
+        ${CMAKE_SOURCE_DIR}/car/devices/tb6612
+        ${CMAKE_SOURCE_DIR}/car/lib/mixer
+        ${CMAKE_SOURCE_DIR}/car/nodes/vehicle_control
+)
+
+# ---------------------------------------------------------------------------
+# sensor — STM32F103C8, Cortex-M3. VL53L0X ranging node.
+#
+# Publishes object lists on CAN per contracts/adas.dbc (the debug UART it used
+# during bring-up is gone). Pulls in the ST VL53L0X API (a vendor blob) + our
+# platform port + the HAL, on top of the shared car/drivers, plus the generated
+# CAN packers and the shared E2E layer. The vendor Middleware is compiled with
+# warnings suppressed — it is not held to the project's -Wall -Wextra bar.
+# ---------------------------------------------------------------------------
+set(VL53_DIR ${CMAKE_SOURCE_DIR}/car/devices/vl53l0x)
+set(VL53_MW  ${VL53_DIR}/Middleware/VL53L0X_1.0.4)
+file(GLOB VL53_API CONFIGURE_DEPENDS ${VL53_MW}/Api/core/src/*.c)
+set(VL53_MW_SRC ${VL53_API} ${VL53_MW}/Api/platform/src/vl53l0x_platform.c)
+
+add_firmware(sensor
+    CPU     "-mcpu=cortex-m3 -mthumb"
+    DEVICE  STM32F103xB
+    LINKER  ${CMAKE_SOURCE_DIR}/platform/f103/STM32F103C8TX_FLASH.ld
+    SOURCES
+        ${CAR_DRIVERS}
+        ${VL53_MW_SRC}
+        ${VL53_DIR}/HAL/src/hal_vl53.c
+        ${CMAKE_SOURCE_DIR}/contracts/gen/adas.c
+        ${CMAKE_SOURCE_DIR}/shared/e2e/e2e.c
+        car/nodes/sensor/main.c
         platform/f103/system_stm32f1xx.c
         platform/f103/startup_stm32f103c8tx.s
     INCLUDES
         ${CMAKE_SOURCE_DIR}/car/drivers
-        ${CMAKE_SOURCE_DIR}/car/devices/tb6612
-        ${CMAKE_SOURCE_DIR}/car/lib/mixer
-        ${CMAKE_SOURCE_DIR}/car/nodes/gateway
+        ${VL53_DIR}/HAL/inc
+        ${VL53_DIR}/inc
+        ${VL53_MW}/Api/core/inc
+        ${VL53_MW}/Api/platform/inc
+        ${CMAKE_SOURCE_DIR}/car/nodes/sensor
+        ${CMAKE_SOURCE_DIR}/contracts/gen
+        ${CMAKE_SOURCE_DIR}/shared/e2e
         ${CMAKE_SOURCE_DIR}/platform/f103
 )
+
+# The vendor API predates the project's warning flags; don't hold it to them.
+set_source_files_properties(${VL53_MW_SRC} TARGET_DIRECTORY sensor
+    PROPERTIES COMPILE_OPTIONS "-w")
 
 # ---------------------------------------------------------------------------
 # Flashing via OpenOCD
@@ -174,33 +269,38 @@ if(OPENOCD_BIN)
         VERBATIM
     )
 
-    add_custom_target(flash-car
+    add_custom_target(flash-gateway
         COMMAND ${OPENOCD_BIN}
                 -f interface/stlink.cfg -f target/stm32f1x.cfg
-                -c "program $<TARGET_FILE:car> verify reset exit"
-        DEPENDS car
-        COMMENT "Flashing car (STM32F103C8) via OpenOCD"
+                -c "program $<TARGET_FILE:gateway> verify reset exit"
+        DEPENDS gateway
+        COMMENT "Flashing gateway node (STM32F103C8) via OpenOCD"
         VERBATIM
     )
 
-    # diag-car: read the car's s_diag snapshot over SWD and decode it (the car
-    # has no UART). Needs nm to locate the struct in the ELF.
-    find_program(ARM_NM NAMES arm-none-eabi-nm)
-    if(ARM_NM)
-        add_custom_target(diag-car
-            COMMAND ${CMAKE_COMMAND}
-                    -DNM=${ARM_NM}
-                    -DELF=$<TARGET_FILE:car>
-                    -DOPENOCD=${OPENOCD_BIN}
-                    -P ${CMAKE_SOURCE_DIR}/cmake/read_diag.cmake
-            DEPENDS car
-            USES_TERMINAL
-            COMMENT "Reading car diagnostics (s_diag) over SWD"
-            VERBATIM
-        )
-    else()
-        message(STATUS "arm-none-eabi-nm not found - diag-car target disabled")
-    endif()
+    add_custom_target(flash-vehicle-control
+        COMMAND ${OPENOCD_BIN}
+                -f interface/stlink.cfg -f target/stm32f1x.cfg
+                -c "program $<TARGET_FILE:vehicle_control> verify reset exit"
+        DEPENDS vehicle_control
+        COMMENT "Flashing vehicle-control node (STM32F103C8) via OpenOCD"
+        VERBATIM
+    )
+
+    add_custom_target(flash-sensor
+        COMMAND ${OPENOCD_BIN}
+                -f interface/stlink.cfg -f target/stm32f1x.cfg
+                -c "program $<TARGET_FILE:sensor> verify reset exit"
+        DEPENDS sensor
+        COMMENT "Flashing sensor node (STM32F103C8) via OpenOCD"
+        VERBATIM
+    )
+
+    # diag-car is gone. It read an s_diag snapshot out of the old combined `car`
+    # firmware over SWD, because that board had no way to report anything. The
+    # nodes now publish their own health on CAN — heartbeats carry uptime, node
+    # state and the real CAN error counters — so a USB-CAN adapter shows more,
+    # live, without a debugger attached. cmake/read_diag.cmake is unused.
 
 else()
     message(STATUS "OpenOCD not found - flash-* targets disabled "
