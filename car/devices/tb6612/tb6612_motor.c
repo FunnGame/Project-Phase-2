@@ -8,10 +8,10 @@
 
 #include "drv_gpio.h"
 #include "drv_pwm.h"
-#include "car_config.h"
+#include "vehicle_config.h"
 
 /* -------------------------------------------------------------------------- */
-/*  Per-wheel wiring, resolved once from car_config.h                          */
+/*  Per-wheel wiring, resolved once from vehicle_config.h                          */
 /* -------------------------------------------------------------------------- */
 
 typedef struct {

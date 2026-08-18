@@ -8,7 +8,7 @@
 
 #include "drv_encoder.h"
 #include "drv_timer.h"
-#include "car_config.h"
+#include "vehicle_config.h"
 
 /* Counts -> RPM: (counts / counts_per_rev) * samples_per_second * 60. */
 #define ENC_RPM_SCALE  (60.0f * (float)CAR_ENC_SAMPLE_HZ)

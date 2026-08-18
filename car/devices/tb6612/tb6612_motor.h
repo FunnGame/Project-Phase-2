@@ -6,7 +6,7 @@
  * Each motor takes three signals: a PWM pin setting the magnitude and two
  * direction pins (IN1/IN2) setting the sign. A shared STBY pin gates both
  * bridges. All pins, the timer, the channels and the PWM frequency come from
- * car_config.h.
+ * vehicle_config.h.
  *
  * Two levels of API:
  *   - TB6612_SetMotor()  one wheel, signed speed. The primitive; this is what
@@ -57,7 +57,7 @@ void TB6612_Init(void);
  * @param speed -100..+100. Positive is forward, negative reverse, 0 coasts.
  *              Values outside the range are clamped.
  *
- * The per-wheel CAR_MOTOR_*_INVERT flags in car_config.h are applied here, so
+ * The per-wheel CAR_MOTOR_*_INVERT flags in vehicle_config.h are applied here, so
  * "positive is forward" holds however the motor leads happen to be soldered.
  */
 void TB6612_SetMotor(Motor_Side_t side, int8_t speed);

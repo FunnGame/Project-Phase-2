@@ -13,7 +13,7 @@
  * loop see a torn 32-bit float mid-update. The ISR therefore does integer work
  * only.
  *
- * Pins, timers, gearing and the sample rate all come from car_config.h.
+ * Pins, timers, gearing and the sample rate all come from vehicle_config.h.
  ******************************************************************************
  */
 #ifndef MOTOR_ENCODER_H_
