@@ -1,64 +1,88 @@
-VERSION ""
+VERSION "1.0"
 
 
 NS_ : 
-	NS_DESC_
-	CM_
-	BA_DEF_
-	BA_
-	VAL_
-	CAT_DEF_
-	CAT_
-	FILTER
-	BA_DEF_DEF_
-	EV_DATA_
-	ENVVAR_DATA_
-	SGTYPE_
-	SGTYPE_VAL_
-	BA_DEF_SGTYPE_
-	BA_SGTYPE_
-	SIG_TYPE_REF_
-	VAL_TABLE_
-	SIG_GROUP_
-	SIG_VALTYPE_
-	SIGTYPE_VALTYPE_
-	BO_TX_BU_
-	BA_DEF_REL_
-	BA_REL_
-	BA_DEF_DEF_REL_
-	BU_SG_REL_
-	BU_EV_REL_
-	BU_BO_REL_
-	SG_MUL_VAL_
+    NS_DESC_
+    CM_
+    BA_DEF_
+    BA_
+    VAL_
+    CAT_DEF_
+    CAT_
+    FILTER
+    BA_DEF_DEF_
+    EV_DATA_
+    ENVVAR_DATA_
+    SGTYPE_
+    SGTYPE_VAL_
+    BA_DEF_SGTYPE_
+    BA_SGTYPE_
+    SIG_TYPE_REF_
+    VAL_TABLE_
+    SIG_GROUP_
+    SIG_VALTYPE_
+    SIGTYPE_VALTYPE_
+    BO_TX_BU_
+    BA_DEF_REL_
+    BA_REL_
+    BA_DEF_DEF_REL_
+    BU_SG_REL_
+    BU_EV_REL_
+    BU_BO_REL_
+    SG_MUL_VAL_
 
 BS_:
 
-BU_: ECU1 ECU2 ECU3
+BU_: ECU1_Sensor ECU2_Actuator ECU3_Gateway
+
+VAL_TABLE_ AEB_State 1 "AEB_ACTIVE" 0 "NORMAL" ;
+VAL_TABLE_ Button_Mask 3 "ARMED_AND_REVERSE" 2 "ARMED_ONLY" 1 "REVERSE_ONLY" 0 "NO_ACTION" ;
 
 
-BO_ 256 CONTROL_CMD: 8 ECU3
- SG_ throttle : 0|8@1- (1,0) [-100|100] "%"  ECU2
- SG_ steering : 8|8@1- (1,0) [-100|100] "%"  ECU2
- SG_ brake : 16|8@1+ (1,0) [0|100] "%"  ECU2
- SG_ buttons : 24|8@1+ (1,0) [0|255] ""  ECU2
- SG_ sequence : 32|8@1+ (1,0) [0|255] ""  ECU2
- SG_ crc8 : 56|8@1+ (1,0) [0|255] ""  ECU2
+BO_ 256 CONTROL_CMD: 8 ECU3_Gateway
+ SG_ Cmd_Steering : 0|8@1- (1,0) [-100|100] "%"  ECU2_Actuator
+ SG_ Cmd_Throttle : 8|8@1+ (1,0) [0|100] "%"  ECU2_Actuator
+ SG_ Cmd_Brake : 16|8@1+ (1,0) [0|100] "%"  ECU2_Actuator
+ SG_ Cmd_Buttons : 24|8@1+ (1,0) [0|255] ""  ECU2_Actuator
+ SG_ Cmd_SeqNum : 32|8@1+ (1,0) [0|255] "Count"  ECU2_Actuator
+ SG_ Cmd_Reserved : 40|16@1+ (1,0) [0|65535] "-"  ECU2_Actuator
+ SG_ Cmd_CRC8 : 56|8@1+ (1,0) [0|255] "Hex"  ECU2_Actuator
 
-BO_ 512 SENSOR_DISTANCE: 8 ECU1
- SG_ distance_mm : 0|16@1+ (1,0) [0|65535] "mm"  ECU2,ECU3
+BO_ 512 SENSOR_DISTANCE: 8 ECU1_Sensor
+ SG_ Sns_Distance_mm : 0|16@1+ (1,0) [0|65535] "mm"  ECU2_Actuator,ECU3_Gateway
 
-BO_ 768 TELEMETRY_STATUS: 8 ECU2
- SG_ speed_rpm : 0|16@1+ (1,0) [0|65535] "rpm"  ECU3
- SG_ acc_active : 16|8@1+ (1,0) [0|1] ""  ECU3
- SG_ aeb_active : 24|8@1+ (1,0) [0|1] ""  ECU3
- SG_ battery_percent : 32|8@1+ (1,0) [0|100] "%"  ECU3
+BO_ 768 TELEMETRY_STATUS: 8 ECU2_Actuator
+ SG_ Tel_Speed : 0|16@1- (1,0) [-32768|32767] "RPM"  ECU3_Gateway
+ SG_ Tel_State_AEB : 16|8@1+ (1,0) [0|255] ""  ECU3_Gateway
+ SG_ Tel_Faults : 24|8@1+ (1,0) [0|255] "Bitmask"  ECU3_Gateway
+ SG_ Tel_Applied_Thr : 32|8@1+ (1,0) [0|100] "%"  ECU3_Gateway
+ SG_ Tel_Applied_Brk : 40|8@1+ (1,0) [0|100] "%"  ECU3_Gateway
+ SG_ Tel_Battery : 48|8@1+ (1,0) [0|100] "%"  ECU3_Gateway
 
 
 
-CM_ BO_ 256 "RF to CAN Control Command (20ms cycle)";
-CM_ SG_ 256 crc8 "CRC8 polynomial 0x07";
-CM_ BO_ 512 "Sensor distance payload from ECU1 (50ms cycle)";
-CM_ BO_ 768 "Vehicle status telemetry from ECU2 (100ms cycle)";
-VAL_ 768 acc_active 0 "Inactive" 1 "Active" ;
-VAL_ 768 aeb_active 0 "Inactive" 1 "Active" ;
+BA_DEF_ BO_  "GenMsgCycleTime" INT 0 65535;
+BA_DEF_ BO_  "GenMsgSendType" ENUM  "Cyclic","NotUsed","NotUsed","NotUsed","NotUsed","Cyclic","NotUsed","IfActive","NoMsgSendType";
+BA_DEF_ SG_  "GenSigStartValue" INT 0 65535;
+BA_DEF_DEF_  "GenMsgCycleTime" 0;
+BA_DEF_DEF_  "GenMsgSendType" "NoMsgSendType";
+BA_DEF_DEF_  "GenSigStartValue" 0;
 
+BA_ "GenMsgCycleTime" BO_ 256 20;
+BA_ "GenMsgSendType" BO_ 256 0;
+BA_ "GenMsgCycleTime" BO_ 512 50;
+BA_ "GenMsgSendType" BO_ 512 0;
+BA_ "GenMsgCycleTime" BO_ 768 100;
+BA_ "GenMsgSendType" BO_ 768 0;
+
+VAL_ 256 Cmd_Buttons 3 "ARMED_AND_REVERSE" 2 "ARMED_ONLY" 1 "REVERSE_ONLY" 0 "NO_ACTION" ;
+VAL_ 768 Tel_State_AEB 1 "AEB_ACTIVE" 0 "NORMAL" ;
+
+CM_ BO_ 256 "Lệnh điều khiển từ Gateway xuống Actuator (Chu kỳ 20ms)";
+CM_ SG_ 256 Cmd_Steering "Góc lái: -100 (Trái) đến +100 (Phải)";
+CM_ SG_ 256 Cmd_Buttons "Bit 0: Reverse, Bit 1: Armed";
+CM_ SG_ 256 Cmd_CRC8 "Mã kiểm tra toàn vẹn dữ liệu - Đa thức 0x07";
+CM_ BO_ 512 "Dữ liệu đo lường môi trường từ Cảm biến (Chu kỳ 50ms)";
+CM_ BO_ 768 "Trạng thái vận hành phản hồi về Gateway (Chu kỳ 100ms)";
+CM_ SG_ 768 Tel_Speed "Vận tốc động cơ thực tế, có thể quay ngược (Âm)";
+CM_ SG_ 768 Tel_Faults "Mã lỗi phần cứng (Hardware Faults bitmask)";
