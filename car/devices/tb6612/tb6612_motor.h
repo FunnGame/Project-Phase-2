@@ -78,12 +78,15 @@ void TB6612_Stop(void);
 
 /**
  * @brief Short-brake both motors (IN1 = IN2 = 1, full PWM).
- *
- * Shorts each motor's terminals so it resists rotation, which stops the car
- * far faster than coasting. This is the actuator the AEB full-braking stage
- * will use — TB6612_Stop() only removes drive.
  */
 void TB6612_Brake(void);
+
+/**
+ * @brief Short-brake both motors at a given strength.
+ * @param percent 0..100. 0 leaves the wheels coasting - the bridge is gated by
+ *        the PWM pin, so a 0 % short is never applied.
+ */
+void TB6612_BrakeLevel(uint8_t percent);
 
 /**
  * @brief Enable or disable the driver's outputs.

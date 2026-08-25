@@ -165,16 +165,22 @@ void TB6612_Stop(void)
     }
 }
 
-void TB6612_Brake(void)
+void TB6612_BrakeLevel(uint8_t percent)
 {
+    if (percent > 100u) {
+        percent = 100u;
+    }
+
     for (unsigned i = 0; i < DRV_ARRAY_LEN(s_motors); ++i) {
         const Motor_Wiring *m = &s_motors[i];
-        /* Both inputs high shorts the motor terminals. PWM must be non-zero:
-         * the bridge is gated by the PWM pin, so at 0 % duty the short is
-         * never actually applied and the wheels coast instead. */
         motor_set_bridge(m, true, true);
-        DRV_PWM_SetDuty(CAR_MOTOR_PWM_TIMER, m->channel, 100u);
+        DRV_PWM_SetDuty(CAR_MOTOR_PWM_TIMER, m->channel, percent);
     }
+}
+
+void TB6612_Brake(void)
+{
+    TB6612_BrakeLevel(100u);
 }
 
 void TB6612_SetStandby(bool enabled)
