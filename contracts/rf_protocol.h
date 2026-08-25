@@ -106,6 +106,9 @@ void rf_control_frame_finalize(rf_control_frame_t *frame);
  *   [11] slow_id   selector for the rotating diagnostic below
  *   [12] slow_val  one diagnostic byte per frame; all of them within ~1 s
  *   [13] crc       CRC-8 over bytes [0..12]
+ *
+ * Both ends must agree on the size or the station rejects every frame on
+ * length - there is no negotiation.
  */
 
 #define RF_TELEM_MAGIC          0x5Au
@@ -149,6 +152,20 @@ typedef struct __attribute__((packed)) {
     uint8_t  slow_val;  /**< the selected diagnostic                        */
     uint8_t  crc;       /**< CRC-8 over the first 13 bytes                  */
 } rf_telemetry_frame_t;
+
+/*
+ * The two ends are different cores (Cortex-M3 gateway, Cortex-M4 station) with
+ * different compilers' idea of alignment. "packed" should make that moot, but
+ * a silent disagreement here produces frames that are the right LENGTH and the
+ * wrong SHAPE - which fails the CRC and looks exactly like radio interference.
+ * Fail the build instead.
+ */
+#if !defined(__cplusplus)
+_Static_assert(sizeof(rf_telemetry_frame_t) == RF_TELEM_FRAME_SIZE,
+               "rf_telemetry_frame_t does not match RF_TELEM_FRAME_SIZE");
+_Static_assert(sizeof(rf_control_frame_t) == RF_CONTROL_FRAME_SIZE,
+               "rf_control_frame_t does not match RF_CONTROL_FRAME_SIZE");
+#endif
 
 /** @brief Vehicle state (0..7), matching VC_VehicleState in adas.dbc. */
 static inline uint8_t rf_telem_vehicle_state(const rf_telemetry_frame_t *f)

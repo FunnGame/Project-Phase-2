@@ -177,6 +177,7 @@ bool nrf24_read_ack_payload(nrf24_t *dev, uint8_t *buf, uint8_t max_len,
 #define NRF24_REG_RF_SETUP      0x06u
 #define NRF24_REG_STATUS        0x07u
 #define NRF24_REG_RX_PW_P0      0x11u
+#define NRF24_REG_FIFO_STATUS   0x17u
 
 /**
  * @brief Read one configuration register over SPI.

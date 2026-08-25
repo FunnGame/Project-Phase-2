@@ -337,6 +337,17 @@ nrf24_result_t nrf24_send(nrf24_t *dev, const uint8_t *data, uint8_t len)
         }
         dev->hal->delay_us(TX_WAIT_US);
     }
+
+    /* Timed out waiting for either result flag. The payload is still sitting in
+     * the TX FIFO and whatever status bits are set are still set, so leaving
+     * now would stack the next payload behind this one. The FIFO holds three:
+     * after three timeouts the radio stops transmitting ENTIRELY and never
+     * recovers, which presents as a link that works and then simply stops with
+     * no corrupt frames to show for it.
+     *
+     * The MAX_RT path below already cleans up; this one did not. */
+    nrf24_write_reg(dev, REG_STATUS, STATUS_TX_DS | STATUS_MAX_RT);
+    nrf24_command(dev, CMD_FLUSH_TX);
     return NRF24_TIMEOUT;
 }
 
