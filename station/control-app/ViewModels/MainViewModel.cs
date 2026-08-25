@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Windows.Threading;
 using Station.ControlApp.Input;
 using Station.ControlApp.Mapping;
@@ -28,6 +28,8 @@ public sealed class MainViewModel : ObservableObject
     // Latched arm state + previous arm-button level for rising-edge detection.
     private bool _armed;
     private bool _prevArmButton;
+    private bool _reverseLatched;
+    private bool _prevReverseButton;
 
     public MainViewModel()
     {
@@ -121,6 +123,7 @@ public sealed class MainViewModel : ObservableObject
         // Arm/enable: toggle on a rising edge of the arm button; force-disarm
         // whenever the controller is not connected (safety).
         UpdateArmState(s);
+        UpdateReverseState(s);
 
         // Sticks: numeric read-out + dot position on the canvas.
         LeftStickText = $"X {s.RawLeftStickX,6}   Y {s.RawLeftStickY,6}";
@@ -153,7 +156,7 @@ public sealed class MainViewModel : ObservableObject
         DPadRight = s.IsPressed(GamepadButtons.DPadRight);
 
         // Derived car-control intent + the actual frame the radio link will send.
-        CarControl c = ControlMapping.FromState(s, _armed);
+        CarControl c = ControlMapping.FromState(s, _armed, _reverseLatched);
         SteeringText = $"{c.Steering,+6:0.00}";
         ThrottleText = $"{c.Throttle,6:0.00}";
         BrakeText = $"{c.Brake,6:0.00}";
@@ -198,6 +201,31 @@ public sealed class MainViewModel : ObservableObject
 
         Armed = _armed;
         ArmStatusText = _armed ? "ARMED" : "DISARMED";
+    }
+
+    /// <summary>
+    /// Latch the drive direction on the rising edge of the reverse button.
+    ///
+    /// Cleared on disconnect, exactly like the arm latch: a pad that drops out
+    /// and comes back must not silently restore a direction the operator set
+    /// minutes ago and has since forgotten about. Unlike arm, it is NOT cleared
+    /// on disarm - reversing, stopping to reposition, then driving on again is
+    /// a normal manoeuvre, and clearing it there would surprise more than it
+    /// protects.
+    /// </summary>
+    private void UpdateReverseState(in GamepadState s)
+    {
+        if (!s.IsConnected)
+        {
+            _reverseLatched = false;
+            _prevReverseButton = false;
+            return;
+        }
+
+        bool pressed = s.IsPressed(ControlMapping.ReverseButton);
+        if (pressed && !_prevReverseButton)   // rising edge -> toggle
+            _reverseLatched = !_reverseLatched;
+        _prevReverseButton = pressed;
     }
 
     private static double DotX(float normX) => StickArea / 2 + normX * StickRadius - DotSize / 2;

@@ -1,4 +1,4 @@
-using Station.ControlApp.Input;
+﻿using Station.ControlApp.Input;
 
 namespace Station.ControlApp.Mapping;
 
@@ -10,7 +10,8 @@ namespace Station.ControlApp.Mapping;
 /// <param name="Steering">-1 (full left) .. +1 (full right).</param>
 /// <param name="Throttle">0 .. 1 (drive magnitude).</param>
 /// <param name="Brake">0 .. 1 (brake).</param>
-/// <param name="Reverse">True while the reverse-direction button is held.</param>
+/// <param name="Reverse">True while the car should drive backwards. Latched:
+/// see <see cref="ReverseButton"/>.</param>
 /// <param name="Armed">True when the car is enabled (armed). When false the car
 /// must ignore drive commands and stay stopped.</param>
 public readonly record struct CarControl(
@@ -23,25 +24,30 @@ public readonly record struct CarControl(
 ///   Steering  = left stick X
 ///   Throttle  = right trigger (RT)
 ///   Brake     = left trigger  (LT)
-///   Reverse   = left bumper  (LB), held   — flips drive direction
+///   Reverse   = left bumper  (LB), toggle — see <see cref="ReverseButton"/>
 ///   Arm/enable= right bumper (RB), toggle — see <see cref="ArmButton"/>
 ///
-/// This is the single place to change how the pad drives the car. Note the arm
-/// state is a latched toggle, so it is tracked by the caller (the ViewModel)
-/// and passed in here — this method stays a pure, stateless mapper.
+/// This is the single place to change how the pad drives the car. Note that BOTH
+/// latched toggles — arm and reverse — are tracked by the caller (the ViewModel)
+/// and passed in here, so this method stays a pure, stateless mapper.
 /// </summary>
 public static class ControlMapping
 {
     // XInput's recommended left-thumb deadzone, as a normalised fraction.
     private const float SteeringDeadzone = 7849f / 32767f;
 
-    /// <summary>Button that signals reverse direction while held.</summary>
+    /// <summary>
+    /// Button that TOGGLES the drive direction. Latched rather than held: on a
+    /// vehicle you reverse for a manoeuvre lasting seconds, and holding a
+    /// bumper throughout while also working both triggers and the stick is
+    /// awkward enough to cause mistakes.
+    /// </summary>
     public const GamepadButtons ReverseButton = GamepadButtons.LeftShoulder;
 
     /// <summary>Button that toggles the car enable (arm) state.</summary>
     public const GamepadButtons ArmButton = GamepadButtons.RightShoulder;
 
-    public static CarControl FromState(in GamepadState s, bool armed)
+    public static CarControl FromState(in GamepadState s, bool armed, bool reverse)
     {
         if (!s.IsConnected)
             return new CarControl(0f, 0f, 0f, false, false);
@@ -49,7 +55,6 @@ public static class ControlMapping
         float steering = ApplyDeadzone(s.LeftStickX, SteeringDeadzone);
         float throttle = s.RightTrigger;
         float brake = s.LeftTrigger;
-        bool reverse = s.IsPressed(ReverseButton);
 
         return new CarControl(steering, throttle, brake, reverse, armed);
     }

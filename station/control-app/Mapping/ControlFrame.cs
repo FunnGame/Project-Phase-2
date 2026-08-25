@@ -42,7 +42,7 @@ public sealed class ControlFrameSerializer
     /// Builds the next frame from <paramref name="c"/> and advances the
     /// sequence counter. The returned array is exactly <see cref="FrameSize"/>
     /// bytes, ready to hand to the transport.
-    /// </summary>
+    /// </summary>  
     public byte[] Build(in CarControl c)
     {
         var frame = new byte[FrameSize];
