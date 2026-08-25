@@ -44,7 +44,7 @@
 
 /* ===== nRF24 SPI bus ======================================================= */
 #define APP_NRF_SPI             SPI2
-#define APP_NRF_SPI_BAUD        SPI_BAUD_DIV8    /* ~5.6 MHz @ 45 MHz PCLK1 */
+#define APP_NRF_SPI_BAUD        SPI_BAUD_DIV16   /* ~5.6 MHz @ 45 MHz PCLK1 */
 
 #define APP_NRF_SCK_PORT        GPIOB
 #define APP_NRF_SCK_PIN         13u

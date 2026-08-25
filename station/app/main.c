@@ -149,7 +149,15 @@ static void board_init(void)
 static rf_telemetry_frame_t s_telem;      /* last VALID frame                 */
 static uint32_t s_last_telem_ms;          /* when it arrived                  */
 static bool     s_have_telem;
-static uint32_t s_telem_bad;              /* magic/CRC rejects - wiring smoke  */
+/* Two ENTIRELY different faults, so they are counted apart:
+ *   s_telem_badlen - the payload was the wrong size. That is a version skew:
+ *                    the gateway and this station disagree about
+ *                    RF_TELEM_FRAME_SIZE, i.e. one of them was not reflashed.
+ *   s_telem_badcrc - right size, failed magic or CRC. That is real corruption
+ *                    on the air, and points at RF conditions, not firmware.
+ * Lumping them into one number said "something is wrong" and nothing more. */
+static uint32_t s_telem_badlen;
+static uint32_t s_telem_badcrc;
 static uint16_t s_rtt_ms;                 /* round trip, from the seq echo     */
 
 /** @brief True while telemetry is arriving on time. */
@@ -175,14 +183,14 @@ static void telemetry_poll(uint8_t seq_sent, uint32_t sent_ms)
         return;
     }
     if (len != RF_TELEM_FRAME_SIZE) {
-        s_telem_bad++;
+        s_telem_badlen++;
         return;
     }
 
     rf_telemetry_frame_t t;
     memcpy(&t, buf, sizeof(t));
     if (!rf_telemetry_frame_valid(&t)) {
-        s_telem_bad++;
+        s_telem_badcrc++;
         return;
     }
 
@@ -300,6 +308,9 @@ static void update_status_led(void)
 #define TFT_STATE_Y     12u
 #define TFT_AEB_X       162u
 #define TFT_AEB_Y       18u
+/* Drive direction, right of the AEB state. 254 + 3 cells x 12 px = 254..289,
+ * inside the 320 px edge. */
+#define TFT_DIR_X       254u
 #define TFT_RULE1_Y     46u
 
 #define TFT_SPEED_X     8u
@@ -324,6 +335,11 @@ static void update_status_led(void)
 #define TFT_DIAG_Y      176u
 #define TFT_RTT_X       32u
 #define TFT_BAD_X       124u
+#define TFT_LEN_X       214u
+
+/* IMU cross-check row. Deliberately at the bottom in small type: it is a
+ * bring-up instrument, not a driving instrument, and must not compete with the
+ * speed and range fields above it. */
 
 static bool s_tft_ok;
 
@@ -340,6 +356,9 @@ static struct {
     uint8_t  faults;
     uint16_t rtt;
     uint16_t bad;
+    bool     vc_heard;
+    uint16_t badlen;
+    uint8_t  dir;          /* 0 fwd, 1 rev, 2 unknown */
 } s_shadow;
 
 static uint32_t s_tft_last_ms;
@@ -448,6 +467,7 @@ static void tft_paint_chrome(void)
     ili9341_fill_screen(TFT_BG);
 
     ili9341_draw_text(TFT_AEB_X, 6u, "AEB", 1u, TFT_LABEL, TFT_BG);
+    ili9341_draw_text(TFT_DIR_X, 6u, "DIR", 1u, TFT_LABEL, TFT_BG);
     ili9341_draw_hline(0u, TFT_RULE1_Y, ili9341_width(), TFT_RULE);
 
     ili9341_draw_text(TFT_SPEED_X, TFT_NUM_LBL_Y, "SPEED mm/s", 1u,
@@ -471,8 +491,15 @@ static void tft_paint_chrome(void)
 
     ili9341_draw_text(8u,   (uint16_t)(TFT_DIAG_Y + 4u), "RTT", 1u,
                       TFT_LABEL, TFT_BG);
-    ili9341_draw_text(100u, (uint16_t)(TFT_DIAG_Y + 4u), "BAD", 1u,
+    ili9341_draw_text(100u, (uint16_t)(TFT_DIAG_Y + 4u), "CRC", 1u,
                       TFT_LABEL, TFT_BG);
+    ili9341_draw_text(190u, (uint16_t)(TFT_DIAG_Y + 4u), "LEN", 1u,
+                      TFT_LABEL, TFT_BG);
+
+    /* IMU cross-check row: integrated accelerometer velocity against the
+     * encoder speed shown above. VY is the drift meter - a differential-drive
+     * chassis cannot move sideways, so whatever VY accumulates on a straight
+     * run is integration error, and VX is wrong by about as much. */
 }
 
 static void tft_init(void)
@@ -535,8 +562,19 @@ static void tft_update(void)
     const uint8_t vstate = live ? rf_telem_vehicle_state(&s_telem) : 0u;
     const uint8_t aeb    = live ? rf_telem_aeb_state(&s_telem)     : 0u;
 
-    if (relive || vstate != s_shadow.vstate) {
-        if (live) {
+    /* The gateway sends state 0 to mean "the vehicle node is not talking to
+     * me", not "the vehicle node reports INIT" - publish_status() on that node
+     * can only ever emit FAILSAFE, ARMED or DISARMED, so a genuine INIT never
+     * reaches the air. Rendering 0 through the state-name table printed INIT
+     * and made a dead CAN link look like a healthy boot. Trust the node
+     * presence bit instead. */
+    const bool vc_heard = live && ((s_telem.health & RF_TELEM_NODE_VC) != 0u);
+
+    if (relive || vstate != s_shadow.vstate || vc_heard != s_shadow.vc_heard) {
+        if (live && !vc_heard) {
+            ili9341_draw_field(TFT_STATE_X, TFT_STATE_Y, 8u, 3u,
+                               "NO CAR", false, ILI9341_RED, TFT_BG);
+        } else if (live) {
             ili9341_draw_field(TFT_STATE_X, TFT_STATE_Y, 8u, 3u,
                                vehicle_state_name(vstate), false,
                                vehicle_state_color(vstate), TFT_BG);
@@ -550,6 +588,28 @@ static void tft_update(void)
         ili9341_draw_field(TFT_AEB_X, TFT_AEB_Y, 7u, 2u,
                            live ? aeb_state_name(aeb) : "---", false,
                            live ? aeb_state_color(aeb) : TFT_IDLE, TFT_BG);
+    }
+
+    /* ---- drive direction ------------------------------------------------
+     * Taken from the frame this station last TRANSMITTED, not from telemetry:
+     * it is the operator's own command, and it should appear immediately
+     * rather than after a radio round trip.
+     *
+     * It earns a place on screen because reverse is a LATCHED toggle. While it
+     * was a held button your thumb told you the state; now nothing does, and
+     * discovering the direction by watching which way the car sets off is not
+     * an acceptable way to find out. */
+    const uint8_t dir = !link_ok() ? 2u
+                      : (rf_control_is_reverse(&s_latest) ? 1u : 0u);
+
+    if (first || dir != s_shadow.dir) {
+        static const char *const dir_name[3] = { "FWD", "REV", "---" };
+        const uint16_t dir_col = (dir == 1u) ? ILI9341_ORANGE
+                               : (dir == 0u) ? TFT_VALUE
+                               :               TFT_IDLE;
+
+        ili9341_draw_field(TFT_DIR_X, TFT_AEB_Y, 3u, 2u, dir_name[dir],
+                           false, dir_col, TFT_BG);
     }
 
     /* ---- speed and range ------------------------------------------------ */
@@ -637,11 +697,22 @@ static void tft_update(void)
                            TFT_VALUE, TFT_BG);
     }
 
-    const uint16_t bad = (uint16_t)((s_telem_bad > 9999u) ? 9999u : s_telem_bad);
+    const uint16_t bad = (uint16_t)((s_telem_badcrc > 9999u) ? 9999u
+                                                             : s_telem_badcrc);
     if (first || bad != s_shadow.bad) {
         fmt_u16(buf, bad);
         ili9341_draw_field(TFT_BAD_X, TFT_DIAG_Y, 4u, 2u, buf, true,
                            (bad != 0u) ? ILI9341_ORANGE : TFT_IDLE, TFT_BG);
+    }
+
+    const uint16_t blen = (uint16_t)((s_telem_badlen > 9999u) ? 9999u
+                                                              : s_telem_badlen);
+    if (first || blen != s_shadow.badlen) {
+        fmt_u16(buf, blen);
+        /* Red, not amber: a length mismatch is never noise. It means one end
+         * is running firmware from before the frame changed size. */
+        ili9341_draw_field(TFT_LEN_X, TFT_DIAG_Y, 4u, 2u, buf, true,
+                           (blen != 0u) ? ILI9341_RED : TFT_IDLE, TFT_BG);
     }
 
     s_shadow.painted = true;
@@ -658,6 +729,9 @@ static void tft_update(void)
     s_shadow.faults  = faults;
     s_shadow.rtt     = s_rtt_ms;
     s_shadow.bad     = bad;
+    s_shadow.vc_heard = vc_heard;
+    s_shadow.dir     = dir;
+    s_shadow.badlen  = blen;
 }
 
 int main(void)
