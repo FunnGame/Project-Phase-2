@@ -149,7 +149,9 @@ add_firmware(station
 # ---------------------------------------------------------------------------
 file(GLOB CAR_DRIVERS CONFIGURE_DEPENDS car/drivers/*.c)
 file(GLOB CAR_DEVICES CONFIGURE_DEPENDS car/devices/tb6612/*.c)
+file(GLOB CAR_IMU     CONFIGURE_DEPENDS car/devices/mpu6050/*.c)
 file(GLOB CAR_MIXER   CONFIGURE_DEPENDS car/lib/mixer/*.c)
+file(GLOB CAR_AEB     CONFIGURE_DEPENDS car/lib/aeb/*.c)
 
 # Shared by every car node.
 set(CAR_COMMON_SOURCES
@@ -192,7 +194,9 @@ add_firmware(vehicle_control
     SOURCES
         ${CAR_DRIVERS}
         ${CAR_DEVICES}
+        ${CAR_IMU}
         ${CAR_MIXER}
+        ${CAR_AEB}
         ${CAR_COMMON_SOURCES}
         car/nodes/vehicle_control/main.c
         platform/f103/system_stm32f1xx.c
@@ -200,7 +204,9 @@ add_firmware(vehicle_control
     INCLUDES
         ${CAR_COMMON_INCLUDES}
         ${CMAKE_SOURCE_DIR}/car/devices/tb6612
+        ${CMAKE_SOURCE_DIR}/car/devices/mpu6050
         ${CMAKE_SOURCE_DIR}/car/lib/mixer
+        ${CMAKE_SOURCE_DIR}/car/lib/aeb
         ${CMAKE_SOURCE_DIR}/car/nodes/vehicle_control
 )
 
@@ -258,11 +264,82 @@ find_program(OPENOCD_BIN openocd
     DOC   "OpenOCD executable used by the flash-* targets"
 )
 
+# ---------------------------------------------------------------------------
+# imu-probe - standalone MPU6050 bench test for a SPARE STM32F103C8.
+#
+# Not part of the vehicle and not on any bus: no CAN, no radio, no contract.
+# It reuses car/drivers and car/devices/mpu6050 so a pass here is a statement
+# about the same driver the vehicle node runs, and reads the SAME CAR_MPU_*
+# settings out of vehicle_config.h so bus, address and ranges cannot drift
+# from the real thing.
+#
+#   cmake --build build --target imu-probe
+#   cmake --build build --target flash-imu-probe
+# ---------------------------------------------------------------------------
+add_firmware(imu_probe
+    CPU     "-mcpu=cortex-m3 -mthumb"
+    DEVICE  STM32F103xB
+    LINKER  ${CMAKE_SOURCE_DIR}/platform/f103/STM32F103C8TX_FLASH.ld
+    SOURCES
+        ${CAR_DRIVERS}
+        ${CAR_IMU}
+        tests/imu_probe/main.c
+        platform/f103/system_stm32f1xx.c
+        platform/f103/startup_stm32f103c8tx.s
+    INCLUDES
+        ${CAR_COMMON_INCLUDES}
+        ${CMAKE_SOURCE_DIR}/car/devices/mpu6050
+        ${CMAKE_SOURCE_DIR}/car/nodes/vehicle_control
+)
+
+# ---------------------------------------------------------------------------
+# nrf-probe - nRF24L01+ bench test for the GATEWAY board, read out over SWD.
+#
+# Blink code 3 says "the radio did not respond" and stops there. This says why:
+# it dumps the config registers into a global that OpenOCD reads out of RAM, so
+# no UART or USB-serial adapter is needed - the ST-Link already attached for
+# flashing is the whole instrument.
+#
+#   cmake --build build --target flash-nrf-probe
+#   cmake --build build --target read-nrf-probe
+# ---------------------------------------------------------------------------
+add_firmware(nrf_probe
+    CPU     "-mcpu=cortex-m3 -mthumb"
+    DEVICE  STM32F103xB
+    LINKER  ${CMAKE_SOURCE_DIR}/platform/f103/STM32F103C8TX_FLASH.ld
+    SOURCES
+        ${CAR_DRIVERS}
+        tests/nrf_probe/main.c
+        platform/f103/system_stm32f1xx.c
+        platform/f103/startup_stm32f103c8tx.s
+    INCLUDES
+        ${CAR_COMMON_INCLUDES}
+        ${CMAKE_SOURCE_DIR}/car/nodes/gateway
+)
+
 if(OPENOCD_BIN)
     # station: on-board ST-Link V2-1. car: external ST-Link V2 on the SWD header.
+    #
+    # Both adapters are usually plugged in at once, and interface/stlink.cfg
+    # matches BOTH - OpenOCD then picks one arbitrarily and dies with a bare
+    # "Error: open failed" before it ever reaches the target. Pinning the USB
+    # product ID per target makes each flash- goal address its own probe:
+    #
+    #   0x3748  ST-Link V2   (standalone dongle -> the three F103 car boards)
+    #   0x374b  ST-Link V2-1 (on-board on the Nucleo -> the F446 station)
+    #
+    # The command is "st-link vid_pid" (hyphenated) - it comes from the adapter
+    # driver name set by interface/stlink.cfg, and "stlink" is not a command.
+    # Override on the command line if you use a clone with a different PID:
+    #   cmake -B build ... -DSTLINK_PID_CAR=0x374b
+    set(STLINK_PID_CAR     "0x3748" CACHE STRING "USB PID of the car's ST-Link")
+    set(STLINK_PID_STATION "0x374b" CACHE STRING "USB PID of the station's ST-Link")
+
     add_custom_target(flash-station
         COMMAND ${OPENOCD_BIN}
-                -f interface/stlink.cfg -f target/stm32f4x.cfg
+                -f interface/stlink.cfg
+                -c "st-link vid_pid 0x0483 ${STLINK_PID_STATION}"
+                -f target/stm32f4x.cfg
                 -c "program $<TARGET_FILE:station> verify reset exit"
         DEPENDS station
         COMMENT "Flashing station (STM32F446RE) via OpenOCD"
@@ -271,7 +348,9 @@ if(OPENOCD_BIN)
 
     add_custom_target(flash-gateway
         COMMAND ${OPENOCD_BIN}
-                -f interface/stlink.cfg -f target/stm32f1x.cfg
+                -f interface/stlink.cfg
+                -c "st-link vid_pid 0x0483 ${STLINK_PID_CAR}"
+                -f target/stm32f1x.cfg
                 -c "program $<TARGET_FILE:gateway> verify reset exit"
         DEPENDS gateway
         COMMENT "Flashing gateway node (STM32F103C8) via OpenOCD"
@@ -280,16 +359,83 @@ if(OPENOCD_BIN)
 
     add_custom_target(flash-vehicle-control
         COMMAND ${OPENOCD_BIN}
-                -f interface/stlink.cfg -f target/stm32f1x.cfg
+                -f interface/stlink.cfg
+                -c "st-link vid_pid 0x0483 ${STLINK_PID_CAR}"
+                -f target/stm32f1x.cfg
                 -c "program $<TARGET_FILE:vehicle_control> verify reset exit"
         DEPENDS vehicle_control
         COMMENT "Flashing vehicle-control node (STM32F103C8) via OpenOCD"
         VERBATIM
     )
 
+    add_custom_target(flash-nrf-probe
+        COMMAND ${OPENOCD_BIN}
+                -f interface/stlink.cfg
+                -c "st-link vid_pid 0x0483 ${STLINK_PID_CAR}"
+                -f target/stm32f1x.cfg
+                -c "program $<TARGET_FILE:nrf_probe> verify reset exit"
+        DEPENDS nrf_probe
+        COMMENT "Flashing nRF24 probe (STM32F103C8) via OpenOCD"
+        VERBATIM
+    )
+
+    # Reads the result struct back over SWD and decodes it. Safe to re-run.
+    #
+    # Driven by cmake -P rather than a shell script: on Windows a bare "bash"
+    # in a custom target picks up whichever bash is first on PATH, and the WSL
+    # one cannot open C:/... paths - it fails with a misleading "No such file
+    # or directory" pointing at a script that plainly exists.
+    add_custom_target(read-nrf-probe
+        COMMAND ${CMAKE_COMMAND}
+                -DOPENOCD=${OPENOCD_BIN}
+                -DELF=$<TARGET_FILE:nrf_probe>
+                -DPID=${STLINK_PID_CAR}
+                -P ${CMAKE_SOURCE_DIR}/tests/nrf_probe/read_probe.cmake
+        DEPENDS nrf_probe
+        COMMENT "Reading nRF24 probe result over SWD"
+        VERBATIM
+    )
+
+    # Live view of the RUNNING gateway - no reflash, no reset. See gw_debug.h.
+    add_custom_target(read-gateway
+        COMMAND ${CMAKE_COMMAND}
+                -DOPENOCD=${OPENOCD_BIN}
+                -DELF=$<TARGET_FILE:gateway>
+                -DPID=${STLINK_PID_CAR}
+                -P ${CMAKE_SOURCE_DIR}/tests/nrf_probe/read_gateway.cmake
+        DEPENDS gateway
+        COMMENT "Reading live gateway state over SWD"
+        VERBATIM
+    )
+
+    # Why did the AEB not fire? Peak-held approach data. See vc_debug.h.
+    add_custom_target(read-vehicle
+        COMMAND ${CMAKE_COMMAND}
+                -DOPENOCD=${OPENOCD_BIN}
+                -DELF=$<TARGET_FILE:vehicle_control>
+                -DPID=${STLINK_PID_CAR}
+                -P ${CMAKE_SOURCE_DIR}/tests/nrf_probe/read_vehicle.cmake
+        DEPENDS vehicle_control
+        COMMENT "Reading live + peak-held vehicle-control AEB state over SWD"
+        VERBATIM
+    )
+
+    add_custom_target(flash-imu-probe
+        COMMAND ${OPENOCD_BIN}
+                -f interface/stlink.cfg
+                -c "st-link vid_pid 0x0483 ${STLINK_PID_CAR}"
+                -f target/stm32f1x.cfg
+                -c "program $<TARGET_FILE:imu_probe> verify reset exit"
+        DEPENDS imu_probe
+        COMMENT "Flashing IMU bench probe (STM32F103C8) via OpenOCD"
+        VERBATIM
+    )
+
     add_custom_target(flash-sensor
         COMMAND ${OPENOCD_BIN}
-                -f interface/stlink.cfg -f target/stm32f1x.cfg
+                -f interface/stlink.cfg
+                -c "st-link vid_pid 0x0483 ${STLINK_PID_CAR}"
+                -f target/stm32f1x.cfg
                 -c "program $<TARGET_FILE:sensor> verify reset exit"
         DEPENDS sensor
         COMMENT "Flashing sensor node (STM32F103C8) via OpenOCD"
