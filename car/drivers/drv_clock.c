@@ -108,3 +108,32 @@ uint32_t DRV_Clock_GetTimerClock(TIM_TypeDef *tim)
     const uint32_t pclk1 = DRV_Clock_GetPCLK1();
     return (s_apb_div[ppre1 & 0x7u] == 1u) ? pclk1 : pclk1 * 2u;
 }
+
+DRV_ResetReason DRV_Clock_ResetReason(void)
+{
+    const uint32_t csr = RCC->CSR;
+    DRV_ResetReason r;
+
+    /* Most specific first. PINRSTF is set alongside a power-on reset on this
+     * part, so it has to be tested LAST or everything looks like a pin reset. */
+    if (csr & RCC_CSR_LPWRRSTF) {
+        r = DRV_RESET_LOW_POWER;
+    } else if (csr & RCC_CSR_WWDGRSTF) {
+        r = DRV_RESET_WWDG;
+    } else if (csr & RCC_CSR_IWDGRSTF) {
+        r = DRV_RESET_IWDG;
+    } else if (csr & RCC_CSR_SFTRSTF) {
+        r = DRV_RESET_SOFTWARE;
+    } else if (csr & RCC_CSR_PORRSTF) {
+        r = DRV_RESET_POWER_ON;      /* or a brown-out - see the header */
+    } else if (csr & RCC_CSR_PINRSTF) {
+        r = DRV_RESET_PIN;
+    } else {
+        r = DRV_RESET_UNKNOWN;
+    }
+
+    /* Clear, so the next reset reports its own cause and not this one too. */
+    RCC->CSR |= RCC_CSR_RMVF;
+
+    return r;
+}

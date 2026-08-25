@@ -56,6 +56,24 @@ uint32_t DRV_Clock_GetPCLK2(void);
  */
 uint32_t DRV_Clock_GetTimerClock(TIM_TypeDef *tim);
 
+/**
+ * @brief Why the MCU last reset. Values match HBxx_ResetReason in adas.dbc.
+ */
+typedef enum {
+    DRV_RESET_UNKNOWN   = 0,
+    DRV_RESET_POWER_ON  = 1,   /**< POR/PDR - INCLUDES BROWN-OUT, see below  */
+    DRV_RESET_PIN       = 2,   /**< NRST driven low                          */
+    DRV_RESET_SOFTWARE  = 3,
+    DRV_RESET_IWDG      = 4,
+    DRV_RESET_WWDG      = 5,
+    DRV_RESET_LOW_POWER = 6
+} DRV_ResetReason;
+
+/**
+ * @brief Read and CLEAR the reset cause flags in RCC_CSR.
+ */
+DRV_ResetReason DRV_Clock_ResetReason(void);
+
 #ifdef __cplusplus
 }
 #endif

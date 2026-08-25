@@ -5,12 +5,15 @@
  ******************************************************************************
  */
 #include "drv_i2c.h"
+#include "drv_gpio.h"
+#include "drv_timer.h"
 #include "drv_clock.h"
 #include "drv_gpio.h"
 
-/* Busy-wait budget for a single flag (iterations, not wall-clock). Generous:
- * a byte at 100 kHz is ~90 us, and the CPU may be at 8 MHz HSI. */
-#define I2C_WAIT_LOOPS   (200000u)
+#define I2C_WAIT_CYCLES_PER_ITER  (6u)
+#define I2C_WAIT_BUDGET_US        (2000u)
+#define I2C_WAIT_LOOPS \
+    ((72u * I2C_WAIT_BUDGET_US) / I2C_WAIT_CYCLES_PER_ITER)
 
 /* -------------------------------------------------------------------------- */
 /*  Low-level helpers                                                          */
@@ -83,6 +86,46 @@ static DRV_Status i2c_wait_idle(I2C_TypeDef *i2c)
 /*  Init                                                                       */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * @brief Free a slave that is holding SDA low, before touching the peripheral.
+ *
+ */
+static void i2c_bus_recover(uint8_t scl_pin, uint8_t sda_pin)
+{
+    DRV_GPIO_Init(GPIOB, scl_pin, GPIO_MODE_OUT_50M, GPIO_CNF_OUT_OD,
+                  GPIO_PULL_NONE);
+    DRV_GPIO_Init(GPIOB, sda_pin, GPIO_MODE_OUT_50M, GPIO_CNF_OUT_OD,
+                  GPIO_PULL_NONE);
+
+    /* Open-drain high = released; the pull-ups decide the level. */
+    DRV_GPIO_Write(GPIOB, scl_pin, GPIO_HIGH);
+    DRV_GPIO_Write(GPIOB, sda_pin, GPIO_HIGH);
+    DRV_Delay_Us(10u);
+
+    if (DRV_GPIO_Read(GPIOB, sda_pin) == GPIO_HIGH) {
+        return;                              /* bus already idle */
+    }
+
+    for (uint8_t i = 0u; i < 9u; i++) {
+        DRV_GPIO_Write(GPIOB, scl_pin, GPIO_LOW);
+        DRV_Delay_Us(5u);
+        DRV_GPIO_Write(GPIOB, scl_pin, GPIO_HIGH);
+        DRV_Delay_Us(5u);
+
+        if (DRV_GPIO_Read(GPIOB, sda_pin) == GPIO_HIGH) {
+            break;                           /* slave let go */
+        }
+    }
+
+    /* STOP condition: SDA released while SCL is high. */
+    DRV_GPIO_Write(GPIOB, sda_pin, GPIO_LOW);
+    DRV_Delay_Us(5u);
+    DRV_GPIO_Write(GPIOB, scl_pin, GPIO_HIGH);
+    DRV_Delay_Us(5u);
+    DRV_GPIO_Write(GPIOB, sda_pin, GPIO_HIGH);
+    DRV_Delay_Us(5u);
+}
+
 DRV_Status DRV_I2C_Init(const I2C_Config *cfg)
 {
     if (cfg == NULL || cfg->i2c == NULL || cfg->speed_hz == 0u) {
@@ -107,6 +150,11 @@ DRV_Status DRV_I2C_Init(const I2C_Config *cfg)
     } else {
         return DRV_INVALID_PARAM;
     }
+
+    /* Unwedge the bus before handing the pins to the peripheral. Harmless if
+     * it is already idle, and the difference between working and not if this
+     * is a reset rather than a power-up. */
+    i2c_bus_recover(scl_pin, sda_pin);
 
     /* SCL/SDA: alternate-function open-drain (an I2C bus is wire-AND). */
     DRV_GPIO_Init(GPIOB, scl_pin, GPIO_MODE_OUT_50M, GPIO_CNF_OUT_AF_OD,
