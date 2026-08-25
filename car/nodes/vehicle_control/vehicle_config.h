@@ -24,6 +24,8 @@
 #include "drv_pwm.h"
 #include "drv_encoder.h"
 #include "drv_can.h"
+#include "drv_i2c.h"
+#include "mpu6050.h"   /* MPU6050_ADDR_*, MPU6050_*_FS_* */
 #include "adas.h"         /* cycle times come from the DBC, not from here */
 
 /* ===== System clock ======================================================= */
@@ -42,26 +44,11 @@
 
 /* ===== CAN vehicle bus ====================================================
  * drv_can fixes the pins at PB8 (RX) / PB9 (TX) and the rate at 500 kbit/s.
- * Message layout is contracts/adas.dbc; do not hand-code identifiers.
- *
- * PIN NOTE: PB8/PB9 are TIM4 CH3/CH4. TIM4 drives the right encoder on CH1/CH2
- * (PB6/PB7) but not CH3/CH4, so there is no conflict - check here before
- * assigning anything new.
- */
+ * Message layout is contracts/adas.dbc; do not hand-code identifiers. */
 #define CAR_NODE_ID_VEHICLE     2u        /* NodeAddress VC in adas.dbc       */
 
-/* CAN_MODE_LOOPBACK drives the wire but needs no ACK and cannot bus-off - use
- * it when bringing this node up alone. CAN_MODE_NORMAL for real operation.
- *
- * CAUTION: in loopback this node never hears the gateway, so no command will
- * ever arrive and the motors stay stopped. That is safe, but it means loopback
- * cannot be used to test driving. */
 #define CAR_CAN_MODE            CAN_MODE_NORMAL
 
-/* Transmit periods are taken from the GENERATED header, not duplicated here:
- * they are a property of the contract, and a copy in each node's config is a
- * copy that can drift from the DBC. Change GenMsgCycleTime in adas.dbc and
- * re-run contracts/generate.sh. */
 #define CAR_CAN_STATUS_PERIOD_MS ADAS_VC_STATUS_CYCLE_TIME_MS    /* 0x300, 0x310 */
 #define CAR_CAN_HEARTBEAT_MS     ADAS_VC_HEARTBEAT_CYCLE_TIME_MS /* 0x701        */
 
@@ -82,8 +69,7 @@
 #define CAR_DRIVE_PORT          GPIOB
 #define CAR_DRIVE_PIN           0u
 
-/* Lit while the REVERSE bit is set. Plain GPIO — PB5 has no peripheral role
- * in this design. */
+
 #define CAR_REVERSE_LED_PORT    GPIOB
 #define CAR_REVERSE_LED_PIN     5u
 
@@ -113,25 +99,22 @@
 #define CAR_MOTOR_R_IN2_PORT    GPIOA
 #define CAR_MOTOR_R_IN2_PIN     3u
 
-/* STBY: low puts both H-bridges in standby (outputs off) regardless of the
- * direction pins. Held low until TB6612_Init() has configured everything. */
 #define CAR_MOTOR_STBY_PORT     GPIOA
 #define CAR_MOTOR_STBY_PIN      4u
 
-/* Set to 1 if a wheel runs backwards when commanded forward */
+
 #define CAR_MOTOR_L_INVERT      0
 #define CAR_MOTOR_R_INVERT      0
 
 /* ===== Wheel encoders =====================================================
- * Quadrature encoders on the timers' hardware encoder interfaces, so counting
- * costs no CPU time. Each timer's CH1/CH2 pins are fixed:
  * TIM1 = PA8/PA9, TIM4 = PB6/PB7. */
 #define CAR_ENC_L_TIMER         TIM1
 #define CAR_ENC_L_PORT_A        GPIOA
 #define CAR_ENC_L_PIN_A         8u
 #define CAR_ENC_L_PORT_B        GPIOA
 #define CAR_ENC_L_PIN_B         9u
-#define CAR_ENC_L_INVERT        false
+
+#define CAR_ENC_L_INVERT        true
 
 #define CAR_ENC_R_TIMER         TIM4
 #define CAR_ENC_R_PORT_A        GPIOB
@@ -149,20 +132,45 @@
 #define CAR_ENC_COUNTS_PER_REV  (CAR_ENC_PPR * CAR_ENC_GEAR_RATIO * \
                                  CAR_ENC_EDGE_MULT)
 
-/* Speed sampling. The rate is requested in hertz, so it stays correct at any
- * SYSCLK — unlike the prescaler/period pair it replaces, which was only 100 Hz
- * if the part happened to be running at 72 MHz. */
 #define CAR_ENC_SAMPLE_TIMER    TIM2
 #define CAR_ENC_SAMPLE_HZ       100u
 #define CAR_ENC_SAMPLE_IRQ_PRIORITY  2u
 
-/* ===== Vehicle geometry ===================================================
- * Needed to turn encoder RPM into the mm/s and mrad/s that VC_Motion carries.
- *
- * MEASURE THESE. They are plausible defaults for a small differential-drive
- * chassis, not measured values, and every speed the AEB reasons about scales
- * directly with the wheel diameter. */
+/* ===== MPU6050 IMU ========================================================
+ * SET TO 0 TO REMOVE THE IMU ENTIRELY.
+ */
+#define CAR_IMU_ENABLED         0
+
+/* ===== MPU6050 wiring =====================================================
+ * I2C2 (PB10 SCL / PB11 SDA)
+ */
+#define CAR_MPU_I2C             I2C2
+#define CAR_MPU_I2C_HZ          100000u
+#define CAR_MPU_ADDR            MPU6050_ADDR_AD0_LOW
+#define CAR_MPU_ACCEL_RANGE     MPU6050_ACCEL_FS_4G
+#define CAR_MPU_GYRO_RANGE      MPU6050_GYRO_FS_500DPS
+
+/* Anti-alias filter and output rate. */
+#define CAR_MPU_DLPF            MPU6050_DLPF_44HZ
+#define CAR_MPU_SMPLRT_DIV      9u
+
+/* Set to 1 if the board is mounted with its Z axis pointing DOWN,
+*/
+#define CAR_MPU_YAW_INVERT      0
+#define CAR_MPU_BIAS_SAMPLES    64u
+
+/* ===== Vehicle geometry ===================================================*/
 #define CAR_WHEEL_DIAMETER_MM   65.0f     /* tyre outer diameter              */
-#define CAR_TRACK_WIDTH_MM      150.0f    /* centre-to-centre, drive wheels   */
+#define CAR_TRACK_WIDTH_MM      200.0f    /* centre-to-centre, drive wheels   */
+
+/* ===== Steering feel =======================================================
+ *   GAIN  scales how much steering authority the stick has at all. Lower =
+ *         wider turns. This is the one to reach for first.
+ *   SLEW  limits how fast the applied steering may CHANGE, in percent per
+ *         second.
+*/
+#define CAR_STEER_GAIN_PCT      60u       /* 100 = the raw arcade mix         */
+#define CAR_STEER_SLEW_PCT_PER_S 250u     /* full lock in ~0.4 s              */
+
 
 #endif /* VEHICLE_CONFIG_H_ */

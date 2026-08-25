@@ -33,6 +33,7 @@
 #include "nrf24.h"
 #include "rf_protocol.h"
 #include "gateway_config.h"
+#include "gw_debug.h"
 
 #include "adas.h"           /* generated from contracts/adas.dbc */
 #include "e2e.h"
@@ -47,7 +48,13 @@ static uint32_t s_last_rx_ms;            /* when it arrived                  */
 static bool     s_have_frame;            /* anything received yet?           */
 static bool     s_radio_ok;              /* did the radio initialise?        */
 static bool     s_clock_ok;              /* did the PLL reach the target?    */
-static bool     s_can_ok;                /* did CAN leave init mode?         */
+static bool     s_can_ok;
+/* Captured ONCE at start-up, before anything can clear it. Published in the
+ * heartbeat so a node that reset mid-run says so on the bus - the difference
+ * between "the link dropped" and "the node rebooted" is invisible otherwise,
+ * and they need completely different fixes. */
+static DRV_ResetReason s_reset_reason;
+                /* did CAN leave init mode?         */
 
 /* ---- Sequence tracking --------------------------------------------------- */
 static uint8_t  s_last_seq;
@@ -70,12 +77,35 @@ static uint32_t s_tx_dropped;
  * value here is the cheapest evidence that the vehicle node has gone quiet. */
 static struct adas_vc_status_t s_vc_status;
 static struct adas_vc_motion_t s_vc_motion;
+
 static uint32_t s_last_vc_ms;
 static E2E_Receiver s_rx_status;
 static E2E_Receiver s_rx_motion;
 static E2E_Receiver s_rx_vc_hb;
 static E2E_Receiver s_rx_sf_hb;
+static E2E_Receiver s_rx_sf_obj;
 static uint32_t s_e2e_errors;
+
+/* Latest fused object from the sensor node (0x100) - the AEB's own input, and
+ * the only range figure that reaches the operator. Tracked separately from the
+ * SF heartbeat: a node can be alive and heartbeating while its whole array has
+ * failed, so heartbeat presence must NOT be read as "the range is good". */
+static struct adas_sensor_front_object_t s_sf_object;
+static uint32_t s_last_sf_obj_ms;
+static bool     s_seen_sf_obj;
+
+/* ---- live SWD view (gw_debug.h) ------------------------------------------
+ * Counters that exist only to be read by a debugger. Kept next to the state
+ * they describe rather than hidden away, because a counter nobody can see is
+ * how the last three faults stayed invisible for so long. */
+volatile gw_debug_t g_gw_debug;
+static uint32_t s_loop_passes;
+static uint32_t s_rf_frames;
+static uint32_t s_can_rx_status;
+static uint32_t s_can_rx_motion;
+static uint32_t s_can_rx_object;
+static uint32_t s_link_resyncs;   /* times the link came back after dying */
+static uint32_t s_next_dbg_ms;
 
 /* Heartbeat-derived node presence, and the diagnostics the telemetry frame
  * rotates through one byte at a time. */
@@ -133,6 +163,13 @@ static void led_status_write(bool on)
                    on ? GPIO_HIGH : GPIO_LOW);
 #endif
 }
+
+/** @brief True while the fused object list is arriving on time.
+ *
+ * Separate from SF heartbeat presence on purpose - see the note on
+ * s_sf_object. Declared here so status/telemetry share one definition of
+ * "the range is current". */
+static bool sf_object_ok(void);
 
 /** @brief True while frames are arriving on time. */
 static bool link_ok(void)
@@ -202,7 +239,18 @@ static uint8_t link_quality(void)
             n++;
         }
     }
-    return n;
+
+    /* SATURATE AT 15. A 16-slot window yields 0..16, which is seventeen values
+     * and does not fit the four bits both consumers give it - GW_LinkQuality on
+     * 0x200 and the low nibble of the RF telemetry health byte.
+     *
+     * Unsaturated, a PERFECT link counts 16, and 16 & 0x0F is 0. The indicator
+     * therefore climbed as the window filled and then vanished at the exact
+     * moment the link became flawless, which reads as a dead link and is the
+     * most misleading failure this signal could possibly have.
+     *
+     * Losing the distinction between 15-of-16 and 16-of-16 costs nothing. */
+    return (n > 15u) ? 15u : n;
 }
 
 /**
@@ -254,7 +302,7 @@ static void publish_heartbeat(uint32_t now_ms)
                              : (link_ok()
                                  ? ADAS_GW_HEARTBEAT_HBGW_NODE_STATE_RUN_CHOICE
                                  : ADAS_GW_HEARTBEAT_HBGW_NODE_STATE_DEGRADED_CHOICE);
-    hb.hbgw_reset_reason = ADAS_GW_HEARTBEAT_HBGW_RESET_REASON_POWER_ON_CHOICE;
+    hb.hbgw_reset_reason = (uint8_t)s_reset_reason;
     hb.hbgw_uptime       = (uint16_t)(now_ms / 1000u);
     hb.hbgw_can_tec      = tec;
     hb.hbgw_can_rec      = rec;
@@ -283,6 +331,7 @@ static void can_poll(uint32_t now_ms)
         case ADAS_VC_STATUS_FRAME_ID:
             st = E2E_Check((uint16_t)rx.std_id, rx.data, 8u, &s_rx_status);
             if ((st == E2E_OK) || (st == E2E_LOST)) {
+                s_can_rx_status++;
                 (void)adas_vc_status_unpack(&s_vc_status, rx.data, 8u);
                 s_last_vc_ms = now_ms;
             }
@@ -294,6 +343,7 @@ static void can_poll(uint32_t now_ms)
         case ADAS_VC_MOTION_FRAME_ID:
             st = E2E_Check((uint16_t)rx.std_id, rx.data, 8u, &s_rx_motion);
             if ((st == E2E_OK) || (st == E2E_LOST)) {
+                s_can_rx_motion++;
                 (void)adas_vc_motion_unpack(&s_vc_motion, rx.data, 8u);
                 s_last_vc_ms = now_ms;
             }
@@ -319,6 +369,19 @@ static void can_poll(uint32_t now_ms)
             break;
         }
 
+        case ADAS_SENSOR_FRONT_OBJECT_FRAME_ID:
+            st = E2E_Check((uint16_t)rx.std_id, rx.data, 8u, &s_rx_sf_obj);
+            if ((st == E2E_OK) || (st == E2E_LOST)) {
+                s_can_rx_object++;
+                (void)adas_sensor_front_object_unpack(&s_sf_object, rx.data, 8u);
+                s_last_sf_obj_ms = now_ms;
+                s_seen_sf_obj    = true;
+            }
+            if (st != E2E_OK) {
+                s_e2e_errors++;
+            }
+            break;
+
         case ADAS_SF_HEARTBEAT_FRAME_ID:
             st = E2E_Check((uint16_t)rx.std_id, rx.data, 8u, &s_rx_sf_hb);
             if ((st == E2E_OK) || (st == E2E_LOST)) {
@@ -342,6 +405,22 @@ static void can_poll(uint32_t now_ms)
 
 /* A node counts as present if its heartbeat arrived within three cycles. */
 #define NODE_TIMEOUT_MS  (3u * ADAS_VC_HEARTBEAT_CYCLE_TIME_MS)
+
+/* 0x100 is event-triggered, published whenever any element reports, so it
+ * arrives at roughly its 13 ms cycle time but not on a fixed schedule. Five
+ * cycles rides out the jitter and a missed round without letting a range the
+ * operator is steering by go stale unnoticed.
+ *
+ * Deliberately well under the sensor node's own 150 ms staleness sweep: if an
+ * element dies, that node drops it from the fusion and keeps publishing, so
+ * this timeout should only ever fire when 0x100 stops ENTIRELY. */
+#define SF_OBJECT_TIMEOUT_MS  (5u * ADAS_SENSOR_FRONT_OBJECT_CYCLE_TIME_MS)
+
+static bool sf_object_ok(void)
+{
+    return s_seen_sf_obj &&
+           !DRV_SysTick_Elapsed(s_last_sf_obj_ms, SF_OBJECT_TIMEOUT_MS);
+}
 
 /** @brief One diagnostic byte per frame, cycling through them all in ~1 s. */
 static uint8_t slow_value(uint8_t id)
@@ -404,10 +483,36 @@ static void telemetry_queue(uint8_t seq_echo)
         t.state = rf_telem_pack_state(0u, 0u, true);
     }
 
-    /* The sensor node is not integrated, so this node never receives 0x100 and
-     * has no range to report. When it lands, take SF_Range from it here and
-     * fall back to RF_TELEM_RANGE_NONE whenever sf_present is false. */
-    t.range = RF_TELEM_RANGE_NONE;
+    /* Range comes from the FUSED object (0x100), not from any one element: it
+     * is the closest valid target across the whole front array - the same
+     * figure the AEB reasons about. Showing the operator anything else would
+     * mean the screen and the braking decision disagree.
+     *
+     * Three separate things must hold before a number is shown, because the
+     * uplink has one uint16 and no status field beside it - so everything that
+     * is not a trustworthy distance has to collapse into the sentinel:
+     *
+     *   1. a 0x100 has actually arrived, and recently;
+     *   2. the sensor node itself calls it VALID - NO_TARGET, DEGRADED and
+     *      FAULT all mean "do not draw a number";
+     *   3. the value cannot alias the sentinel.
+     *
+     * Note this is independent of sf_present: the heartbeat says the node is
+     * alive, which it still is when every element has failed. */
+    if (sf_object_ok() &&
+        (s_sf_object.sf_status ==
+         ADAS_SENSOR_FRONT_OBJECT_SF_STATUS_VALID_CHOICE)) {
+        uint16_t mm = (uint16_t)s_sf_object.sf_range;
+
+        /* 0xFFFF is the "no range" sentinel, so a real reading must never be
+         * able to reach it. SF_Range is declared [0|4000] mm in the DBC and
+         * the sensor node gates at 2000, so this cannot trip today - but the
+         * clamp costs nothing and the alternative is a maximum-range target
+         * silently rendering as "---". */
+        t.range = (mm >= RF_TELEM_RANGE_NONE) ? (RF_TELEM_RANGE_NONE - 1u) : mm;
+    } else {
+        t.range = RF_TELEM_RANGE_NONE;
+    }
 
     t.health = (uint8_t)(link_quality() & RF_TELEM_LINKQ_MASK);
     t.health |= RF_TELEM_NODE_GW;                       /* we are, by definition */
@@ -465,6 +570,10 @@ static void radio_init(void)
 
 static void board_init(void)
 {
+    /* FIRST: reads and clears RCC_CSR. Anything that reconfigures the
+     * clock tree must not run before this. */
+    s_reset_reason = DRV_Clock_ResetReason();
+
     /* Keep the result: a missing or dead HSE crystal makes this time out and
      * the part carries on at 8 MHz HSI. Everything still runs, just 9x slow -
      * and every CAN bit-timing number assumes 72 MHz. */
@@ -493,6 +602,23 @@ static bool sequence_track(uint8_t seq)
     if (!s_seq_valid) {
         s_last_seq  = seq;
         s_seq_valid = true;
+        return true;
+    }
+
+    /* RESYNC, don't count. The sequence number is 8 bits at a 20 ms cycle, so
+     * it wraps every ~5.1 s. Any outage longer than that makes the gap
+     * ALIASED - an arbitrary 0..254 that says nothing about how many frames
+     * were really lost. Adding it to s_dropped does not just lose precision,
+     * it invents traffic: one link loss can book 250 drops that never
+     * happened, and after a few of those the counter is pure noise and can no
+     * longer show a genuinely degrading link.
+     *
+     * So a frame arriving while the link is DOWN re-establishes the baseline
+     * and is counted as a link loss instead. s_dropped then means only what it
+     * can actually measure: frames missing from an otherwise live link. */
+    if (!link_ok()) {
+        s_link_resyncs++;
+        s_last_seq = seq;
         return true;
     }
 
@@ -527,6 +653,7 @@ static void radio_poll(void)
         s_latest     = frame;
         s_last_rx_ms = DRV_SysTick_GetTick();
         s_have_frame = true;
+        s_rf_frames++;
         s_rx_window  = (uint16_t)((s_rx_window << 1) | 1u);
 
         (void)sequence_track(frame.seq);
@@ -536,6 +663,72 @@ static void radio_poll(void)
          * fresh data rather than the oldest of three queued frames. */
         telemetry_queue(frame.seq);
     }
+}
+
+/**
+ * @brief Republish the node state into g_gw_debug for a debugger to read.
+ *
+ * Rate limited: the nRF24 register reads below are real SPI traffic, and the
+ * main loop spins far faster than any human reads a diagnostic. `seq` still
+ * carries the FREE-RUNNING pass count, so a stalled loop shows up even though
+ * this function runs only every 50 ms.
+ *
+ * The radio registers are read LIVE rather than cached from bring-up. That is
+ * the whole point of doing this in the real firmware: a module that dies or a
+ * wire that falls out mid-run changes these, while radio_ok stays true forever.
+ */
+static void gw_debug_update(uint32_t now_ms)
+{
+    if ((int32_t)(now_ms - s_next_dbg_ms) < 0) {
+        return;
+    }
+    s_next_dbg_ms = now_ms + 50u;
+
+    g_gw_debug.seq       = s_loop_passes;
+    g_gw_debug.uptime_ms = now_ms;
+
+    g_gw_debug.clock_ok = s_clock_ok ? 1u : 0u;
+    g_gw_debug.can_ok   = s_can_ok   ? 1u : 0u;
+    g_gw_debug.radio_ok = s_radio_ok ? 1u : 0u;
+
+    g_gw_debug.nrf_config = nrf24_read_register(&s_radio, NRF24_REG_CONFIG);
+    g_gw_debug.nrf_status = nrf24_read_register(&s_radio, NRF24_REG_STATUS);
+    g_gw_debug.nrf_rf_ch  = nrf24_read_register(&s_radio, NRF24_REG_RF_CH);
+    g_gw_debug.nrf_fifo   = nrf24_read_register(&s_radio,
+                                                NRF24_REG_FIFO_STATUS);
+
+    g_gw_debug.rf_frames     = s_rf_frames;
+    g_gw_debug.rf_dropped    = s_dropped;
+    g_gw_debug.rf_duplicates = s_duplicates;
+    g_gw_debug.rf_age_ms     = s_have_frame ? (now_ms - s_last_rx_ms) : 0xFFFFFFFFu;
+    g_gw_debug.link_ok       = link_ok() ? 1u : 0u;
+    g_gw_debug.link_quality  = link_quality();
+
+    g_gw_debug.can_rx_status  = s_can_rx_status;
+    g_gw_debug.can_rx_motion  = s_can_rx_motion;
+    g_gw_debug.can_tx_dropped = s_tx_dropped;
+    g_gw_debug.e2e_errors     = s_e2e_errors;
+
+    uint8_t tec = 0u, rec = 0u;
+    DRV_CAN_GetErrorCounters(&tec, &rec);
+    g_gw_debug.can_tec     = tec;
+    g_gw_debug.can_rec     = rec;
+    g_gw_debug.can_bus_off = DRV_CAN_IsBusOff() ? 1u : 0u;
+
+    g_gw_debug.seen_vc  = s_seen_vc_hb ? 1u : 0u;
+    g_gw_debug.seen_sf  = s_seen_sf_hb ? 1u : 0u;
+    g_gw_debug.vc_state = (uint8_t)s_vc_status.vc_vehicle_state;
+
+    /* Appended at the END of the struct, not inserted: read_gateway.cmake
+     * decodes by word index, so inserting would silently shift every field
+     * after it. */
+    g_gw_debug.can_rx_object = s_can_rx_object;
+    g_gw_debug.link_resyncs  = s_link_resyncs;
+    g_gw_debug.sf_range      = (uint16_t)s_sf_object.sf_range;
+    g_gw_debug.sf_status     = (uint8_t)s_sf_object.sf_status;
+    g_gw_debug.sf_obj_fresh  = sf_object_ok() ? 1u : 0u;
+
+    g_gw_debug.magic = GW_DEBUG_MAGIC;   /* last: the struct is now valid */
 }
 
 int main(void)
@@ -571,5 +764,8 @@ int main(void)
         }
 
         status_led_update();
+
+        s_loop_passes++;
+        gw_debug_update(now);
     }
 }

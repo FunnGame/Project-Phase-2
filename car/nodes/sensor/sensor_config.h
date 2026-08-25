@@ -47,6 +47,14 @@
 #define SENSOR_MEAS_PERIOD_MS   50u
 #define SENSOR_HEARTBEAT_MS     100u
 
+/* A sensor that has produced nothing for this long is declared FAULT and drops
+ * out of the fused object. Three measurement periods: long enough to ride out
+ * one missed cycle, short enough that a dead sensor cannot keep contributing a
+ * stale range to an AEB decision. THIS IS THE POINT OF IT - without the sweep,
+ * a sensor whose I2C dies simply freezes at its last reading and goes on
+ * looking like a valid target forever. */
+#define SENSOR_STALE_MS         (3u * SENSOR_MEAS_PERIOD_MS)
+
 /* ===== Status LED =========================================================
  * The only diagnostic left once the UART is gone, so init failures are blink
  * codes. PC13 is the Blue Pill's on-board LED - active low, no wiring. */
@@ -62,7 +70,10 @@
 
 /* ===== VL53L0X I2C bus ====================================================
  * MUST match VL53_I2C_BUS in vl53l0x_platform.c (which defaults to I2C1).
- * I2C1 pins are PB6 (SCL) / PB7 (SDA). */
+ * I2C1 pins are PB6 (SCL) / PB7 (SDA).
+ *
+ * All four sensors share this one bus. That is the whole reason the XSHUT
+ * dance below exists. */
 #define SENSOR_I2C              I2C1
 #define SENSOR_I2C_HZ           400000u
 #define SENSOR_I2C_REMAP        false     /* I2C1: false = PB6/PB7, true = PB8/PB9 */
@@ -73,18 +84,64 @@
 #define VL53_TIMING_BUDGET_US   50000u    /* per-measurement budget           */
 #define VL53_INTER_PERIOD_MS    50u       /* continuous-mode period           */
 
-/* ===== Per-sensor wiring ==================================================
- * Every VL53L0X boots at VL53_DEFAULT_ADDR; the XSHUT lines let the HAL bring
- * them up one at a time and give each a unique address. Each XSHUT must be a
- * free GPIO (not the I2C pins) and each address unique and != 0x29. */
-#define VL53_FRONT_XSHUT_PORT   GPIOB
-#define VL53_FRONT_XSHUT_PIN    0u
-#define VL53_FRONT_ADDR         0x30u
+/* ===== Acceptance window ==================================================
+ * A reading outside this band is treated as NO_TARGET no matter what number
+ * the sensor returned. Two independent things make this necessary:
+ *
+ *   1. The ST API always fills in RangeMilliMeter, even when it has just
+ *      decided the measurement failed. An empty scene comes back as ~8190 mm
+ *      with RangeStatus = PHASE - a plausible-looking distance attached to a
+ *      measurement the API itself does not believe.
+ *   2. Even a VALID reading can exceed what the part is specified to do.
+ *
+ * MAX is the datasheet's ceiling for the DEFAULT ranging profile, which is
+ * what vl53_configure() sets: no long-range mode, no relaxed signal-rate
+ * limit. ST quotes ~2 m against a white target in low ambient light, and well
+ * under that (~1.2 m) against a dark target or in sunlight. Anything claiming
+ * more than 2 m from this profile is not a measurement.
+ *
+ * If you ever switch to long-range mode (signal-rate limit 0.1 MCPS, VCSEL
+ * periods 18/14), raise this to 2500-3000 - but note SF_Range is declared
+ * [0|4000] mm in adas.dbc, which is the real hard ceiling for the contract.
+ *
+ * MIN guards the other end: below the part's minimum the return can fold back
+ * and read as a plausible mid-range distance. The API usually catches this as
+ * RangeStatus = MINRANGE, but the floor is cheap and does not depend on it. */
+#define VL53_MIN_VALID_MM       30u
+#define VL53_MAX_VALID_MM       2000u
 
-/* Second sensor — kept here but currently disabled in hal_vl53.h for
- * single-sensor debug. Re-enable VL53_SIDE in the enum + table to use it. */
-#define VL53_SIDE_XSHUT_PORT    GPIOB
-#define VL53_SIDE_XSHUT_PIN     1u
-#define VL53_SIDE_ADDR          0x31u
+/* ===== Per-sensor wiring: the four-element front array ====================
+ * Indices run LEFT to RIGHT across the front of the car, and that ordering is
+ * the contract: it is what SFR_SensorIdx means on 0x101, so a trace can be
+ * read as a spatial picture without a lookup table. Re-ordering these without
+ * re-ordering the physical sensors silently corrupts every diagnostic.
+ *
+ * Every VL53L0X boots at VL53_DEFAULT_ADDR (0x29), so four on one bus all
+ * answer at once. HAL_VL53_Init() resolves that by holding every XSHUT low,
+ * then releasing ONE sensor at a time and readdressing it before waking the
+ * next. Each XSHUT must therefore be its own free GPIO - they cannot be tied
+ * together - and each address must be unique and not 0x29.
+ *
+ * PIN NOTE: PB6/PB7 are the I2C bus and PB8/PB9 are CAN, so the XSHUT lines
+ * use PB0/PB1 and PB10/PB11. PB3/PB4 are deliberately avoided: they are JTAG
+ * (JTDO/NJTRST) on the F103 and need a debug-port remap before they can be
+ * used as plain GPIO.
+ *
+ * Addresses are 7-bit. */
+#define VL53_FL_XSHUT_PORT      GPIOB     /* far left                         */
+#define VL53_FL_XSHUT_PIN       0u
+#define VL53_FL_ADDR            0x30u
+
+#define VL53_CL_XSHUT_PORT      GPIOB     /* centre-left                      */
+#define VL53_CL_XSHUT_PIN       1u
+#define VL53_CL_ADDR            0x31u
+
+#define VL53_CR_XSHUT_PORT      GPIOB     /* centre-right                     */
+#define VL53_CR_XSHUT_PIN       10u
+#define VL53_CR_ADDR            0x32u
+
+#define VL53_FR_XSHUT_PORT      GPIOB     /* far right                        */
+#define VL53_FR_XSHUT_PIN       11u
+#define VL53_FR_ADDR            0x33u
 
 #endif /* SENSOR_CONFIG_H_ */

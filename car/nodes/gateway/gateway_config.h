@@ -41,14 +41,9 @@
  */
 #define CAR_NODE_ID_GATEWAY     1u        /* NodeAddress GW in adas.dbc       */
 
-/* CAN_MODE_LOOPBACK drives the wire but needs no ACK and cannot bus-off - use
- * it when bringing this node up alone. CAN_MODE_NORMAL for real operation. */
+
 #define CAR_CAN_MODE            CAN_MODE_NORMAL
 
-/* Transmit periods are taken from the GENERATED header, not duplicated here:
- * they are a property of the contract, and a copy in each node's config is a
- * copy that can drift from the DBC. Change GenMsgCycleTime in adas.dbc and
- * re-run contracts/generate.sh. */
 #define CAR_CAN_CMD_PERIOD_MS   ADAS_GATEWAY_DRIVER_CMD_CYCLE_TIME_MS   /* 0x200 */
 #define CAR_CAN_HEARTBEAT_MS    ADAS_GW_HEARTBEAT_CYCLE_TIME_MS         /* 0x700 */
 
@@ -64,7 +59,7 @@
 #define CAR_NRF_SCK_PIN         13u
 #define CAR_NRF_MISO_PIN        14u
 #define CAR_NRF_MOSI_PIN        15u
-#define CAR_NRF_SPI_BAUD        SPI_BAUD_DIV8   /* 36 MHz PCLK1 / 8 = 4.5 MHz */
+#define CAR_NRF_SPI_BAUD        SPI_BAUD_DIV16   
 
 /* ===== nRF24 control lines ================================================ */
 #define CAR_NRF_CSN_PORT        GPIOB
@@ -87,9 +82,7 @@
  * STATION_RF_ACK_PAYLOAD in station/app/app_config.h. */
 #define CAR_RF_ACK_PAYLOAD      true
 
-/* ===== Behaviour ==========================================================
- * No valid RF frame for this long => publish LinkOk=0 with the command fields
- * zeroed. The vehicle node applies its own, shorter CAN timeout on top. */
+/* ===== Behaviour ========================================================== */
 #define CAR_FAILSAFE_MS         150u
 
 #endif /* GATEWAY_CONFIG_H_ */
