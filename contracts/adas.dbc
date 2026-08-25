@@ -149,10 +149,10 @@ CM_ SG_ 512 GW_Steering "Mirrors rf_control_frame_t.steering, -100 full left to 
 CM_ SG_ 512 GW_LinkOk "Cleared when the RF failsafe timeout (150 ms) has expired. The command fields are zeroed at the same time, so a stale command cannot be acted upon.";
 CM_ SG_ 512 GW_RfSeq "Mirrors the RF frame sequence number, carried onto CAN so end-to-end latency can be measured from one trace.";
 CM_ SG_ 512 GW_FrameAge "Milliseconds between RF reception and CAN transmission.";
-CM_ SG_ 512 GW_LinkQuality "Valid RF frames received in the last 16 expected slots.";
+CM_ SG_ 512 GW_LinkQuality "Valid RF frames received in the last 16 expected slots, SATURATED AT 15 because the field is four bits wide. 15 therefore means 15 or 16 - a flawless link. Do not widen the window without widening the signal: an unsaturated 16 wraps to 0 and a perfect link reports as a dead one.";
 CM_ SG_ 768 VC_Faults "Bitfield: 0 CAN bus-off, 1 front sensor timeout, 2 RESERVED (side sensor timeout - no side node in the three-MCU build), 3 gateway timeout, 4 E2E failure, 5 motor fault, 6 encoder fault, 7 clock fault.";
 CM_ SG_ 768 VC_E2eErrCount "Saturating count of E2E rejections since reset. Non-zero is a bus integrity problem, not a transient.";
-CM_ SG_ 784 VCM_Speed "Longitudinal speed from the wheel encoders. Positive is forward.";
+CM_ SG_ 784 VCM_Speed "Longitudinal speed from the wheel encoders. Positive is forward. THE AEB BRAKES ON THIS. Note the known limit: encoders measure WHEEL rotation, so during a locked-wheel stop this reads near zero while the car is still sliding. Accelerometer fusion was tried and removed - it settled at bias x TAU, which a degree of mounting tilt made worse than the problem it solved.";
 CM_ SG_ 784 VCM_LpbDistance "Last-point-to-brake distance the AEB currently computes for the measured speed. Published so the ten-run validation protocol can be scored from a bus trace alone.";
 
 

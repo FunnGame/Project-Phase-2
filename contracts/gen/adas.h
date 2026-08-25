@@ -422,7 +422,7 @@ struct adas_gateway_driver_cmd_t {
     uint8_t gw_e2e_alv;
 
     /**
-     * Valid RF frames received in the last 16 expected slots.
+     * Valid RF frames received in the last 16 expected slots, SATURATED AT 15 because the field is four bits wide. 15 therefore means 15 or 16 - a flawless link. Do not widen the window without widening the signal: an unsaturated 16 wraps to 0 and a perfect link reports as a dead one.
      *
      * Range: 0..15 (0..15 -)
      * Scale: 1
@@ -622,7 +622,7 @@ struct adas_vc_motion_t {
     uint8_t vcm_reserved;
 
     /**
-     * Longitudinal speed from the wheel encoders. Positive is forward.
+     * Longitudinal speed from the wheel encoders. Positive is forward. THE AEB BRAKES ON THIS. Note the known limit: encoders measure WHEEL rotation, so during a locked-wheel stop this reads near zero while the car is still sliding. Accelerometer fusion was tried and removed - it settled at bias x TAU, which a degree of mounting tilt made worse than the problem it solved.
      *
      * Range: -3000..3000 (-3000..3000 mm/s)
      * Scale: 1
